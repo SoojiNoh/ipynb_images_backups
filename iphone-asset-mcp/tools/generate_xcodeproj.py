@@ -539,6 +539,13 @@ def main() -> None:
     (project_dir / "project.pbxproj").write_text(text, encoding="utf-8")
     write_scheme(project_dir)
 
+    # 위의 validate() 는 ID 참조만 본다. 실제 문법까지 파싱해서 한 번 더 확인한다.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from validate_pbxproj import check
+
+    if check(project_dir / "project.pbxproj") != 0:
+        sys.exit("생성된 프로젝트가 문법 검증을 통과하지 못했습니다.")
+
     swift_count = sum(len(files) for files in collect_sources().values())
     print(f"{project_dir.relative_to(ROOT)} 생성 — Swift 파일 {swift_count}개, 공유 스킴 1개")
 
