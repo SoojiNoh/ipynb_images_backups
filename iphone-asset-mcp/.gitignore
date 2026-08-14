@@ -1,11 +1,20 @@
-# XcodeGen 이 생성하는 산출물
-AssetBridge.xcodeproj/
-AssetBridge-Info.plist
+# 프로젝트 파일(AssetBridge.xcodeproj)은 일부러 커밋한다.
+# 그래야 추가 도구 설치 없이 바로 열 수 있다.
+# Xcode 가 프로젝트 안에 만드는 개인 상태만 제외한다.
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# setup.sh 가 만드는 개인 서명 설정
+Config/Local.xcconfig
 
 # Xcode
 build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
-*.xcworkspace/xcuserdata/
 .DS_Store
+
+# Python
+__pycache__/
+*.pyc

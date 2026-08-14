@@ -1,0 +1,13 @@
+// 프로젝트 전체의 기본값.
+//
+// 팀 ID 와 번들 ID 는 사람마다 다르므로 여기에 커밋하지 않는다.
+// setup.sh 가 Config/Local.xcconfig 를 만들어 아래 값을 덮어쓴다
+// (Local.xcconfig 는 .gitignore 에 있다).
+
+ASSETBRIDGE_BUNDLE_ID = com.example.assetbridge
+ASSETBRIDGE_TEAM_ID =
+
+#include? "Local.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = $(ASSETBRIDGE_BUNDLE_ID)
+DEVELOPMENT_TEAM = $(ASSETBRIDGE_TEAM_ID)

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>AssetBridge</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- 로컬 네트워크에서 MCP 서버를 대기(listen)하려면 반드시 필요 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>같은 Wi-Fi 의 Claude 클라이언트가 접속할 수 있도록 이 기기에서 MCP 서버를 실행합니다.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_mcp._tcp</string>
+	</array>
+
+	<!-- 노출 도메인별 권한 문구 -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>연결된 Claude 클라이언트가 사진과 동영상을 검색하고 열람할 수 있도록 사진 라이브러리에 접근합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>앨범 생성 및 사진 추가 기능을 사용할 때 사진 라이브러리에 항목을 추가합니다.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>연락처를 검색하고 새 연락처를 추가하는 도구를 제공하기 위해 연락처에 접근합니다.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>일정을 조회하고 새 일정을 만드는 도구를 제공하기 위해 캘린더에 접근합니다.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>일정을 조회하고 새 일정을 만드는 도구를 제공하기 위해 캘린더에 접근합니다.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>미리 알림을 조회하고 추가하는 도구를 제공하기 위해 미리 알림에 접근합니다.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>미리 알림을 조회하고 추가하는 도구를 제공하기 위해 미리 알림에 접근합니다.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>현재 위치를 알려주는 도구를 제공하기 위해 앱 사용 중 위치에 접근합니다.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>걸음 수와 활동 요약을 알려주는 도구를 제공하기 위해 동작 및 피트니스 데이터에 접근합니다.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>기기 음악 보관함을 검색하는 도구를 제공하기 위해 미디어 보관함에 접근합니다.</string>
+
+	<!-- 잠금 화면에서도 서버를 유지하는 옵션(앱 내 토글, 기본 꺼짐) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
+	<!-- 내보낸 원본 파일을 파일 앱 / Finder 에서 꺼낼 수 있게 한다 -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>

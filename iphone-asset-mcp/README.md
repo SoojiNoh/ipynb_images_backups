@@ -72,38 +72,49 @@ Mac + **Xcode 15 이상**, iOS 17 이상 기기가 필요합니다.
 (시뮬레이터에서도 뜨지만 사진·센서 데이터가 비어 있습니다.)
 
 ```bash
-brew install xcodegen          # 처음 한 번만
 cd iphone-asset-mcp
-xcodegen generate              # AssetBridge.xcodeproj 생성
-open AssetBridge.xcodeproj
+./setup.sh
 ```
 
-> **"future Xcode project file format" 오류가 나면**
-> XcodeGen 이 설치된 Xcode 보다 새 포맷으로 프로젝트를 만든 경우입니다.
-> `project.yml` 의 `options.projectFormat` 이 이를 막아주는데, 그 줄이 추가되기 전에
-> 생성한 프로젝트가 남아 있으면 그대로 실패합니다. 지우고 다시 만드세요.
->
-> ```bash
-> rm -rf AssetBridge.xcodeproj && xcodegen generate
-> ```
->
-> XcodeGen 이 `projectFormat` 을 모른다고 하면 (2.43 미만) `brew upgrade xcodegen` 하거나,
-> 생성된 파일의 포맷 버전을 직접 낮추세요.
->
-> ```bash
-> sed -i '' 's/objectVersion = [0-9]*;/objectVersion = 56;/' \
->   AssetBridge.xcodeproj/project.pbxproj
-> ```
+이게 전부입니다. `setup.sh` 가 Xcode 버전을 확인하고, 키체인에서 개발자 팀 ID 를 찾아
+서명 설정을 채우고, 계정명으로 고유한 번들 ID 를 만든 뒤 Xcode 를 엽니다.
 
-Xcode 에서:
-1. `AssetBridge` 타겟 → **Signing & Capabilities** → 본인 팀 선택
-2. `PRODUCT_BUNDLE_IDENTIFIER` 를 고유한 값으로 변경 (예: `com.내이름.assetbridge`)
-3. iPhone 을 연결하고 실행
+**`AssetBridge.xcodeproj` 는 저장소에 들어 있습니다.** XcodeGen 같은 도구를 설치할 필요가 없고,
+따라서 "future Xcode project file format" 오류도 나지 않습니다
+(프로젝트 포맷을 Xcode 14 세대인 `objectVersion 56` 으로 고정해 뒀습니다).
 
-> 무료 Apple ID 로도 사이드로드할 수 있지만 프로비저닝 프로파일이 7일마다 만료되어 재설치해야 합니다.
+그다음 사람이 직접 해야 하는 일만 남습니다 — 기계가 대신할 수 없는 것들입니다.
 
-XcodeGen 없이 하려면 Xcode 에서 iOS App 프로젝트를 새로 만들고 `Sources/` 를 통째로 끌어다 넣은 뒤,
-`project.yml` 의 `info.properties` 에 적힌 Info.plist 키를 그대로 옮기면 됩니다.
+1. iPhone 을 연결하고 Xcode 상단에서 기기 선택 → **⌘R**
+2. 무료 Apple ID 라면 iPhone 에서 한 번 신뢰:
+   설정 → 일반 → VPN 및 기기 관리 → 본인 계정 → 신뢰
+3. 앱에서 **권한 요청** → 시스템 시트 허용 → **시작**
+
+> `setup.sh` 가 키체인에서 인증서를 못 찾으면 (Xcode 에 Apple ID 를 아직 로그인하지 않은 경우)
+> 안내만 남기고 넘어갑니다. Xcode > Settings > Accounts 에서 로그인한 뒤 다시 실행하세요.
+>
+> 무료 Apple ID 로도 사이드로드할 수 있지만 프로비저닝 프로파일이 7일마다 만료되어
+> 재설치해야 합니다. 연간 $99 개발자 계정이면 1년입니다.
+
+### 소스 파일을 추가했다면
+
+프로젝트 파일은 소스 목록을 담고 있으므로 다시 생성해야 합니다.
+
+```bash
+python3 tools/generate_xcodeproj.py
+```
+
+`Sources/` 를 훑어 `.xcodeproj` 를 다시 만들고, 끊어진 참조가 없는지 스스로 검증합니다.
+ID 는 경로 해시로 결정되므로 재생성해도 불필요한 diff 가 생기지 않습니다.
+
+### 서명 값을 바꾸려면
+
+`Config/Local.xcconfig` (setup.sh 가 생성, git 에 올라가지 않음) 를 고치면 됩니다.
+
+```
+ASSETBRIDGE_BUNDLE_ID = com.내이름.assetbridge
+ASSETBRIDGE_TEAM_ID = ABCDE12345
+```
 
 ---
 
@@ -208,13 +219,19 @@ HealthKit(건강 데이터)은 기술적으로 가능하지만 별도 entitlemen
 ## 구조
 
 ```
-Sources/
-├── App/            AssetBridgeApp, AppState, ContentView, AudioKeepAlive
-├── Server/         HTTPServer / HTTPConnection / HTTPTypes  (Network.framework, 의존성 0)
-├── MCP/            MCPServer (JSON-RPC 디스패치), MCPTool (도구·스키마 정의)
-├── Photos/         PhotoLibraryService (PhotoKit), ImageEncoding (축소·격자 합성)
-├── Providers/      도메인별 도구 구현 10종
-└── Support/        JSON, 키체인, 설정, 네트워크 정보, 내보내기 저장소
+├── setup.sh                    한 번에 빌드 준비 (Xcode 확인 → 서명 → 열기)
+├── AssetBridge.xcodeproj/      커밋된 프로젝트 파일 (objectVersion 56)
+├── AssetBridge-Info.plist      권한 문구와 번들 설정
+├── Config/Base.xcconfig        서명 값의 기본값 + Local.xcconfig 선택 include
+├── tools/
+│   └── generate_xcodeproj.py   소스 추가 시 프로젝트 재생성 (자체 검증 포함)
+└── Sources/
+    ├── App/        AssetBridgeApp, AppState, ContentView, AudioKeepAlive
+    ├── Server/     HTTPServer / HTTPConnection / HTTPTypes (Network.framework, 의존성 0)
+    ├── MCP/        MCPServer (JSON-RPC 디스패치), MCPTool (도구·스키마 정의)
+    ├── Photos/     PhotoLibraryService (PhotoKit), ImageEncoding (축소·격자 합성)
+    ├── Providers/  도메인별 도구 구현 10종
+    └── Support/    JSON, 키체인, 설정, 네트워크 정보, 내보내기 저장소
 ```
 
 새 도메인을 붙이려면 `ToolProvider` 를 구현하고 `ToolDomain` 에 케이스를 추가한 뒤
