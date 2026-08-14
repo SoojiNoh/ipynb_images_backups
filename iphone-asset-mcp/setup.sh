@@ -204,7 +204,44 @@ fi
 
 ok "프로젝트 파일 정상"
 
-# --- 4. 열기 ----------------------------------------------------------------
+# --- 4. 실행 대상 ------------------------------------------------------------
+
+step "실행 대상 확인"
+
+# Xcode 15 부터 시뮬레이터 런타임이 본체와 분리되어, 따로 받지 않으면
+# 시뮬레이터가 하나도 없다. 그 상태에서 ⌘R 하면
+# "A build only device cannot be used to run this target" 만 뜬다.
+SIMULATOR_COUNT=0
+if run xcrun simctl list devices available; then
+    SIMULATOR_COUNT="$(printf '%s' "$CAPTURED" | grep -cE '^\s+iPhone|^\s+iPad' || true)"
+fi
+
+DEVICE_COUNT=0
+if run xcrun xctrace list devices; then
+    # 연결된 실기기만 센다. 시뮬레이터 목록과 이 Mac 자신은 제외한다.
+    DEVICE_COUNT="$(printf '%s' "$CAPTURED" \
+        | sed -n '/^== Devices ==/,/^== /p' \
+        | grep -cE '\([0-9]+\.[0-9]+.*\) \(' || true)"
+fi
+
+if (( SIMULATOR_COUNT > 0 )); then
+    ok "시뮬레이터 ${SIMULATOR_COUNT}개 사용 가능"
+fi
+if (( DEVICE_COUNT > 0 )); then
+    ok "연결된 iPhone/iPad ${DEVICE_COUNT}대"
+fi
+
+if (( SIMULATOR_COUNT == 0 && DEVICE_COUNT == 0 )); then
+    warn "실행할 수 있는 대상이 없습니다. 지금 ⌘R 하면 이 오류가 납니다:"
+    note "\"A build only device cannot be used to run this target\""
+    note ""
+    note "둘 중 하나를 하세요."
+    note "  A) iPhone 을 케이블로 연결한다  ← 빠릅니다"
+    note "  B) 시뮬레이터 런타임을 받는다 (약 7GB):"
+    note "       xcodebuild -downloadPlatform iOS"
+fi
+
+# --- 5. 열기 ----------------------------------------------------------------
 
 step "Xcode 열기"
 
