@@ -68,7 +68,8 @@ Claude 에게 보입니다. 꺼진 도구는 `tools/list` 에 아예 나타나�
 
 ## 빌드
 
-Mac + Xcode 15 이상, iOS 17 이상 기기가 필요합니다. (시뮬레이터에서도 뜨지만 사진·센서 데이터가 비어 있습니다.)
+Mac + **Xcode 15 이상**, iOS 17 이상 기기가 필요합니다.
+(시뮬레이터에서도 뜨지만 사진·센서 데이터가 비어 있습니다.)
 
 ```bash
 brew install xcodegen          # 처음 한 번만
@@ -76,6 +77,23 @@ cd iphone-asset-mcp
 xcodegen generate              # AssetBridge.xcodeproj 생성
 open AssetBridge.xcodeproj
 ```
+
+> **"future Xcode project file format" 오류가 나면**
+> XcodeGen 이 설치된 Xcode 보다 새 포맷으로 프로젝트를 만든 경우입니다.
+> `project.yml` 의 `options.projectFormat` 이 이를 막아주는데, 그 줄이 추가되기 전에
+> 생성한 프로젝트가 남아 있으면 그대로 실패합니다. 지우고 다시 만드세요.
+>
+> ```bash
+> rm -rf AssetBridge.xcodeproj && xcodegen generate
+> ```
+>
+> XcodeGen 이 `projectFormat` 을 모른다고 하면 (2.43 미만) `brew upgrade xcodegen` 하거나,
+> 생성된 파일의 포맷 버전을 직접 낮추세요.
+>
+> ```bash
+> sed -i '' 's/objectVersion = [0-9]*;/objectVersion = 56;/' \
+>   AssetBridge.xcodeproj/project.pbxproj
+> ```
 
 Xcode 에서:
 1. `AssetBridge` 타겟 → **Signing & Capabilities** → 본인 팀 선택
