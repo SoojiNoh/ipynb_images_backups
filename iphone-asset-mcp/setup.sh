@@ -32,23 +32,40 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     fail "이 스크립트는 macOS 에서 실행해야 합니다."
 fi
 
-if ! command -v xcodebuild >/dev/null 2>&1; then
-    fail "Xcode 가 설치되어 있지 않습니다. App Store 에서 설치한 뒤 다시 실행하세요."
+# Command Line Tools 만 설치해도 xcodebuild 명령과 xcode-select -p 는 존재한다.
+# 그 상태로는 프로젝트를 열 수도 빌드할 수도 없으므로 Xcode.app 자체를 확인한다.
+ACTIVE_DEVELOPER_DIR="$(xcode-select -p 2>/dev/null || true)"
+
+if [[ -z "$ACTIVE_DEVELOPER_DIR" ]]; then
+    fail "개발자 도구 경로가 설정되어 있지 않습니다. Xcode 를 설치한 뒤 다시 실행하세요."
+fi
+
+if [[ "$ACTIVE_DEVELOPER_DIR" != *".app/Contents/Developer" ]]; then
+    printf '    %s✗%s Xcode.app 이 아니라 Command Line Tools 가 활성화되어 있습니다.\n' "$RED" "$OFF"
+    printf '      현재 경로: %s\n\n' "$ACTIVE_DEVELOPER_DIR"
+    if compgen -G "/Applications/Xcode*.app" >/dev/null; then
+        FOUND_XCODE="$(compgen -G '/Applications/Xcode*.app' | head -1)"
+        printf '      Xcode 는 설치되어 있습니다(%s). 활성화만 하면 됩니다:\n\n' "$FOUND_XCODE"
+        printf '        sudo xcode-select -s %s\n\n' "$FOUND_XCODE"
+    else
+        printf '      Xcode.app 이 설치되어 있지 않습니다. App Store 에서 "Xcode" 를 설치하세요.\n'
+        printf '      (용량이 커서 다운로드에 시간이 걸립니다. 설치 후 한 번 실행해 약관에 동의해야 합니다.)\n\n'
+    fi
+    exit 1
 fi
 
 XCODE_VERSION="$(xcodebuild -version 2>/dev/null | head -1 | awk '{print $2}')"
 XCODE_MAJOR="${XCODE_VERSION%%.*}"
 
 if [[ -z "$XCODE_MAJOR" ]]; then
-    warn "Xcode 버전을 읽지 못했습니다. 계속 진행합니다."
+    printf '    %s✗%s xcodebuild 가 응답하지 않습니다. 아래 명령의 출력을 확인하세요:\n' "$RED" "$OFF"
+    printf '        xcodebuild -version\n'
+    printf '      약관 동의가 필요하다는 메시지가 나오면: sudo xcodebuild -license accept\n'
+    exit 1
 elif (( XCODE_MAJOR < 15 )); then
     fail "Xcode $XCODE_VERSION 입니다. iOS 17 SDK 가 필요해 Xcode 15 이상이어야 합니다."
 else
-    ok "Xcode $XCODE_VERSION"
-fi
-
-if ! xcode-select -p >/dev/null 2>&1; then
-    fail "명령줄 도구 경로가 설정되지 않았습니다: sudo xcode-select -s /Applications/Xcode.app"
+    ok "Xcode $XCODE_VERSION ($ACTIVE_DEVELOPER_DIR)"
 fi
 
 # --- 2. 서명 ----------------------------------------------------------------
@@ -103,8 +120,16 @@ fi
 # --- 4. 열기 ----------------------------------------------------------------
 
 step "Xcode 열기"
-open AssetBridge.xcodeproj
-ok "완료"
+
+# open 은 실패해도 조용한 경우가 있어, Xcode.app 을 직접 지정해 연다.
+XCODE_APP="${ACTIVE_DEVELOPER_DIR%/Contents/Developer}"
+
+if open -a "$XCODE_APP" AssetBridge.xcodeproj 2>/dev/null; then
+    ok "완료 — $XCODE_APP"
+else
+    warn "자동으로 열지 못했습니다. Finder 에서 직접 더블클릭하세요:"
+    printf '        %s/AssetBridge.xcodeproj\n' "$PWD"
+fi
 
 cat <<EOF
 
