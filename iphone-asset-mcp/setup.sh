@@ -177,6 +177,19 @@ ok "번들 ID ${BUNDLE_ID}"
 
 step "프로젝트 확인"
 
+# 추적 중인 파일이 로컬에서만 지워진 경우 git 이 되살려 준다.
+# (git pull 은 가져올 커밋이 없으면 지워진 파일을 복구하지 않는다.)
+DELETED_FILES="$(git -C .. ls-files --deleted -- "$(basename "$PWD")" 2>/dev/null)"
+if [[ -n "$DELETED_FILES" ]]; then
+    warn "로컬에서 지워진 파일 $(printf '%s\n' "$DELETED_FILES" | wc -l | tr -d ' ')개를 복구합니다."
+    # shellcheck disable=SC2086
+    if git -C .. checkout -- $DELETED_FILES 2>>"$LOG"; then
+        ok "복구 완료"
+    else
+        warn "복구에 실패했습니다."
+    fi
+fi
+
 if [[ ! -f AssetBridge.xcodeproj/project.pbxproj ]]; then
     abort "AssetBridge.xcodeproj 가 없습니다." \
           "저장소를 최신으로 받으세요:" \
