@@ -46,6 +46,19 @@ enum NetworkInfo {
         localIPv4Interfaces().first?.ip
     }
 
+    /// 클라이언트에게 알려줄 호스트. 접속 주소와 다운로드 링크 모두 이걸 써야 한다.
+    ///
+    /// 시뮬레이터는 Mac 의 네트워크 스택 위에서 돌기 때문에 앱이 여는 포트가
+    /// Mac 의 루프백에 열린다. 반면 인터페이스 열거로 나오는 192.0.0.x 는
+    /// 시뮬레이터 내부 주소라 Mac 에서 닿지 않으므로 그대로 쓰면 안 된다.
+    static func clientReachableHost() -> String {
+        #if targetEnvironment(simulator)
+        return "127.0.0.1"
+        #else
+        return preferredIPv4() ?? "127.0.0.1"
+        #endif
+    }
+
     /// 들어온 연결의 상대 IP 를 문자열로 뽑는다.
     static func peerAddress(from endpoint: NWEndpoint?) -> String? {
         guard let endpoint else { return nil }

@@ -5,8 +5,7 @@ import UIKit
 enum DownloadLink {
 
     static func url(forKey key: String) -> String {
-        let host = NetworkInfo.preferredIPv4() ?? "127.0.0.1"
-        return "http://\(host):\(RuntimeConfig.shared.port)/download/\(key)"
+        "http://\(NetworkInfo.clientReachableHost()):\(RuntimeConfig.shared.port)/download/\(key)"
     }
 
     static func curl(forKey key: String, filename: String) -> String {

@@ -175,8 +175,7 @@ final class AppState: ObservableObject {
     }
 
     var endpointURL: String {
-        let host = addresses.first?.ip ?? "127.0.0.1"
-        return "http://\(host):\(port)/mcp"
+        "http://\(NetworkInfo.clientReachableHost()):\(port)/mcp"
     }
 
     /// Claude Code 에 붙여넣을 수 있는 한 줄 명령.
