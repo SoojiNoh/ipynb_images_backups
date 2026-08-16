@@ -2,7 +2,8 @@
 #
 # AssetBridge 를 Xcode 에서 바로 실행 가능한 상태로 만든다.
 #
-#   ./setup.sh
+#   ./setup.sh              환경 점검 후 Xcode 를 연다
+#   ./setup.sh --no-open    Xcode 를 열지 않는다 (go.sh 가 이렇게 부른다)
 #
 # 하는 일:
 #   1. Xcode 가 제대로 설치·활성화되어 있는지 확인
@@ -242,6 +243,11 @@ if (( SIMULATOR_COUNT == 0 && DEVICE_COUNT == 0 )); then
 fi
 
 # --- 5. 열기 ----------------------------------------------------------------
+
+if [[ "${1:-}" == "--no-open" ]]; then
+    # go.sh 가 부른 경우. 뒤이어 빌드가 이어지므로 Xcode 를 띄우지 않는다.
+    exit 0
+fi
 
 step "Xcode 열기"
 
