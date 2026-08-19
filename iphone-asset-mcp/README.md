@@ -153,11 +153,15 @@ ASSETBRIDGE_TEAM_ID = ABCDE12345
 앱의 **Claude Code 명령 복사** 버튼을 누르면 아래 형태가 클립보드에 담깁니다.
 
 ```bash
-claude mcp add --transport http iphone http://192.168.0.42:8765/mcp \
-  --header "Authorization: Bearer <토큰>"
+claude mcp add-json iphone '{"type":"http","url":"http://192.168.0.42:8765/mcp","headers":{"Authorization":"Bearer VW71"}}'
 ```
 
 붙여넣고 실행한 뒤 `claude` 를 띄우고 `/mcp` 로 연결을 확인하세요.
+
+`--transport` 대신 `add-json` 을 쓰는 이유는 전자가 비교적 최근 claude CLI 에만
+있어서 조금 옛 버전에서 `unknown option '--transport'` 로 실패하기 때문입니다.
+`add-json` 조차 없는 버전이라면 앱의 **.mcp.json 만들기** 버튼을 쓰세요 —
+CLI 하위 명령을 전혀 쓰지 않고 설정 파일을 직접 만듭니다.
 
 ### 3. Claude Desktop
 **설정 JSON 복사** 버튼의 내용을 설정 파일에 넣습니다.
@@ -203,7 +207,8 @@ ngrok/Cloudflare Tunnel 같은 공개 터널을 쓰려면 앱에서 "사설망�
 
 | 항목 | 내용 |
 |---|---|
-| 인증 | 32바이트 랜덤 Bearer 토큰. 키체인 보관, 상수시간 비교, 앱에서 즉시 재발급 가능 |
+| 인증 | 4자 Bearer 토큰(Crockford Base32). 키체인 보관, 상수시간 비교, 앱에서 즉시 재발급 |
+| 대입 차단 | IP당 5회 실패 → 15분 차단. IP 갈아타기까지 막는 전역 상한 시간당 15회 |
 | 네트워크 | 기본값이 사설망 전용. 공인 IP 에서 온 요청은 403 |
 | 전송 | 평문 HTTP (LAN 전제). 암호화가 필요하면 Tailscale 사용 |
 | 범위 | 앱에서 끈 도메인의 도구는 목록에 나타나지도, 호출되지도 않음 |

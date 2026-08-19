@@ -203,8 +203,23 @@ final class AppState: ObservableObject {
     }
 
     /// Claude Code 에 붙여넣을 수 있는 한 줄 명령.
+    ///
+    /// `--transport` 옵션은 비교적 최근 claude CLI 에만 있어서, 조금 옛 버전에서는
+    /// "unknown option '--transport'" 로 실패한다. `add-json` 은 그보다 오래
+    /// 존재했고 최신 버전에도 그대로 있으므로 이쪽이 넓게 통한다.
     var claudeCodeCommand: String {
-        "claude mcp add --transport http iphone \(endpointURL) --header \"Authorization: Bearer \(token)\""
+        let payload = JSONUtil.string([
+            "type": "http",
+            "url": endpointURL,
+            "headers": ["Authorization": "Bearer \(token)"]
+        ] as [String: Any], pretty: false)
+        return "claude mcp add-json iphone '\(payload)'"
+    }
+
+    /// claude CLI 의 하위 명령에 전혀 의존하지 않는 최후의 수단.
+    /// 현재 폴더에 .mcp.json 을 만든다 — Claude Code 가 그 폴더에서 자동으로 읽는다.
+    var mcpFileCommand: String {
+        "cat > .mcp.json <<'MCPEOF'\n\(mcpJSONConfig)\nMCPEOF"
     }
 
     /// Claude Desktop 등 설정 파일을 쓰는 클라이언트용 조각.

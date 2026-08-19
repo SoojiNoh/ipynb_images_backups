@@ -112,6 +112,7 @@ struct ContentView: View {
             }
 
             copyRow("Claude Code 명령 복사", value: state.claudeCodeCommand, symbol: "terminal")
+            copyRow(".mcp.json 만들기 (CLI 무관)", value: state.mcpFileCommand, symbol: "doc.badge.gearshape")
             copyRow("설정 JSON 복사", value: state.mcpJSONConfig, symbol: "curlybraces")
             copyRow("토큰만 복사", value: state.token, symbol: "key")
 
