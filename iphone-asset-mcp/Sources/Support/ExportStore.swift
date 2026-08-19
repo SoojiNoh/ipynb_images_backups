@@ -33,7 +33,7 @@ final class ExportStore {
     func register(url: URL, filename: String) -> String {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
-        let key = String(TokenFactory.generate().prefix(22)).lowercased()
+        let key = TokenFactory.opaqueKey()
         lock.lock()
         entries[key] = Entry(url: url, filename: filename, byteCount: size, createdAt: Date())
         lock.unlock()

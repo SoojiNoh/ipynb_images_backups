@@ -169,15 +169,51 @@ fi
 
 ok "$BUNDLE_ID 실행됨"
 
+# --- 6. 연결 등록 -------------------------------------------------------------
+
+step "Claude Code 에 등록"
+
+# 시뮬레이터에서 실행된 앱은 컨테이너에 접속 정보를 남긴다. 그 컨테이너는
+# Mac 디스크에 있으므로 여기서 읽어 그대로 등록할 수 있다.
+# 사람이 토큰을 화면에서 옮겨 적을 이유가 없다.
+CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>>"$LOG")"
+CONNECTION="$CONTAINER/Library/Application Support/connection.json"
+
+for _ in $(seq 1 20); do
+    [[ -f "$CONNECTION" ]] && break
+    sleep 0.5
+done
+
+if [[ ! -f "$CONNECTION" ]]; then
+    warn "앱이 아직 접속 정보를 쓰지 않았습니다."
+    note "앱이 뜬 뒤 이 스크립트를 다시 실행하면 자동으로 등록됩니다."
+else
+    MCP_URL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$CONNECTION" 2>>"$LOG")"
+    MCP_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$CONNECTION" 2>>"$LOG")"
+    MANUAL="claude mcp add --transport http iphone $MCP_URL --header \"Authorization: Bearer $MCP_TOKEN\""
+
+    ok "토큰 $MCP_TOKEN"
+
+    if ! command -v claude >/dev/null 2>&1; then
+        warn "claude CLI 를 찾지 못했습니다. 아래를 실행하세요:"
+        note "$MANUAL"
+    else
+        claude mcp remove iphone >/dev/null 2>&1     # 이미 있으면 갈아끼운다
+        if claude mcp add --transport http iphone "$MCP_URL" \
+                --header "Authorization: Bearer $MCP_TOKEN" >>"$LOG" 2>&1; then
+            ok "'iphone' 으로 등록 완료 — 해제는 claude mcp remove iphone"
+        else
+            warn "자동 등록에 실패했습니다. 아래를 직접 실행하세요:"
+            note "$MANUAL"
+        fi
+    fi
+fi
+
 cat <<EOF
 
 ${BOLD}다음 단계${OFF}
-  1. 시뮬레이터 창에서 AssetBridge 앱을 확인하세요.
-  2. 우측 상단 ${BOLD}권한 요청${OFF} → 시트 허용 → ${BOLD}시작${OFF}
-  3. Mac 에서 연결. 시뮬레이터는 Mac 의 네트워크를 그대로 쓰므로 ${BOLD}127.0.0.1${OFF} 입니다:
-
-     claude mcp add --transport http iphone http://127.0.0.1:8765/mcp \\
-       --header "Authorization: Bearer <앱에 표시된 토큰>"
+  1. 시뮬레이터 창의 AssetBridge 에서 ${BOLD}권한 요청${OFF} → 시트 허용 → ${BOLD}시작${OFF}
+  2. 터미널에서 ${BOLD}claude${OFF} 실행 → ${BOLD}/mcp${OFF} 로 'iphone' 이 붙었는지 확인
 
   ${BOLD}시험해 볼 것${OFF} — 사진은 넣어 두었습니다.
      "내 아이폰 사진 몇 장인지 알려줘"    → photos_stats

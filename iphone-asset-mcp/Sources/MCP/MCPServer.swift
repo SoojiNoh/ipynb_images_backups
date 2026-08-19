@@ -14,6 +14,44 @@ final class MCPServer {
         case info, warn, error
     }
 
+    /// 실패한 인증 시도를 상대 IP 별로 세어 무차별 대입에 제동을 건다.
+    /// 토큰을 사람이 옮길 수 있는 길이(60비트)로 줄인 만큼, 이 제동이 실질적인 방어선이다.
+    private final class AuthThrottle {
+        private struct Record {
+            var failures = 0
+            var blockedUntil: Date?
+        }
+
+        private let lock = NSLock()
+        private var records: [String: Record] = [:]
+        private let threshold = 10
+        private let penalty: TimeInterval = 300
+
+        func isBlocked(_ peer: String) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            guard let until = records[peer]?.blockedUntil else { return false }
+            if until > Date() { return true }
+            records[peer] = nil          // 차단 시간이 지났으면 처음부터 다시 센다
+            return false
+        }
+
+        func recordFailure(_ peer: String) {
+            lock.lock(); defer { lock.unlock() }
+            var record = records[peer] ?? Record()
+            record.failures += 1
+            if record.failures >= threshold {
+                record.blockedUntil = Date().addingTimeInterval(penalty)
+            }
+            records[peer] = record
+        }
+
+        func recordSuccess(_ peer: String) {
+            lock.lock(); defer { lock.unlock() }
+            records[peer] = nil
+        }
+    }
+
+    private let throttle = AuthThrottle()
     private let config: RuntimeConfig
     private let providers: [ToolProvider]
 
@@ -53,6 +91,10 @@ final class MCPServer {
             return .error("Local network only. 이 서버는 사설망에서만 접속할 수 있습니다.", status: 403)
         }
 
+        if let peer, throttle.isBlocked(peer) {
+            return .error("인증 실패가 반복되어 잠시 차단되었습니다. 5분 뒤 다시 시도하세요.", status: 429)
+        }
+
         switch (request.method, request.path) {
         case ("GET", "/"):
             return statusPage()
@@ -67,21 +109,21 @@ final class MCPServer {
             return .json(health)
 
         case ("POST", "/mcp"):
-            guard authorize(request) else { return unauthorized(peer) }
+            guard authorize(request, peer: peer) else { return unauthorized(peer) }
             return await handleRPC(request)
 
         case ("GET", "/mcp"):
-            guard authorize(request) else { return unauthorized(peer) }
+            guard authorize(request, peer: peer) else { return unauthorized(peer) }
             // SSE 스트림을 제공하지 않는 서버는 405 로 응답한다.
             return .error("This server does not offer an SSE stream. POST JSON-RPC to /mcp instead.", status: 405)
 
         case ("DELETE", "/mcp"):
-            guard authorize(request) else { return unauthorized(peer) }
+            guard authorize(request, peer: peer) else { return unauthorized(peer) }
             return .empty(status: 200)
 
         default:
             if request.method == "GET", request.path.hasPrefix("/download/") {
-                guard authorize(request) else { return unauthorized(peer) }
+                guard authorize(request, peer: peer) else { return unauthorized(peer) }
                 return download(key: String(request.path.dropFirst("/download/".count)))
             }
             return .error("Not found", status: 404)
@@ -90,11 +132,15 @@ final class MCPServer {
 
     // MARK: - Auth
 
-    private func authorize(_ request: HTTPRequest) -> Bool {
+    private func authorize(_ request: HTTPRequest, peer: String?) -> Bool {
         // 브라우저 프리뷰 편의를 위해 쿼리 토큰도 받는다(로컬망 한정 사용 권장).
         let presented = request.bearerToken ?? request.query["token"]
-        guard let presented else { return false }
-        return TokenFactory.constantTimeEquals(presented, config.token)
+        let granted = presented.map { TokenFactory.matches(presented: $0, expected: config.token) } ?? false
+
+        if let peer {
+            granted ? throttle.recordSuccess(peer) : throttle.recordFailure(peer)
+        }
+        return granted
     }
 
     private func unauthorized(_ peer: String?) -> HTTPResponse {

@@ -27,7 +27,8 @@ final class RuntimeConfig {
     private var _backgroundAudio: Bool
 
     private init() {
-        if let existing = Keychain.load(account: "primary") {
+        // 예전 43자 base64 토큰을 쓰던 설치본은 조용히 짧은 형식으로 옮긴다.
+        if let existing = Keychain.load(account: "primary"), TokenFactory.isCurrentFormat(existing) {
             _token = existing
         } else {
             let fresh = TokenFactory.generate()

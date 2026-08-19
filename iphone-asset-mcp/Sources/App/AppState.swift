@@ -93,6 +93,29 @@ final class AppState: ObservableObject {
         refreshToolCount()
         refreshPermissions()
         refreshFileRoots()
+        writeConnectionFile()
+    }
+
+    /// 시뮬레이터에서만, 접속 정보를 앱 컨테이너에 남긴다.
+    ///
+    /// 시뮬레이터의 컨테이너는 Mac 디스크에 있으므로 run-simulator.sh 가 이 파일을
+    /// 읽어 토큰을 자동으로 등록할 수 있다. 사람이 43자 토큰을 눈으로 옮길 이유가 없다.
+    /// 실기기에서는 쓰지 않는다 — 토큰은 키체인에만 두고, 기기에서는 복사 버튼을 쓴다.
+    private func writeConnectionFile() {
+        #if targetEnvironment(simulator)
+        guard let directory = try? FileManager.default.url(for: .applicationSupportDirectory,
+                                                           in: .userDomainMask,
+                                                           appropriateFor: nil,
+                                                           create: true) else { return }
+        let payload: [String: Any] = [
+            "url": endpointURL,
+            "token": token,
+            "port": port,
+            "claude_code_command": claudeCodeCommand
+        ]
+        try? JSONUtil.data(payload, pretty: true)
+            .write(to: directory.appendingPathComponent("connection.json"), options: .atomic)
+        #endif
     }
 
     private func wireServer() {
@@ -137,6 +160,7 @@ final class AppState: ObservableObject {
             statusMessage = "실행 중"
             append(.info, "서버 시작 — 포트 \(port)")
             refreshAddresses()
+            writeConnectionFile()
             applyIdleTimer()
             applyBackgroundAudio()
         } catch {
@@ -206,6 +230,7 @@ final class AppState: ObservableObject {
     func rotateToken() {
         _ = config.rotateToken()
         objectWillChange.send()
+        writeConnectionFile()
         append(.warn, "토큰을 새로 발급했습니다. 클라이언트 설정을 갱신하세요.")
     }
 
