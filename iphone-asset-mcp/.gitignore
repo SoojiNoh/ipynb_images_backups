@@ -18,3 +18,6 @@ xcuserdata/
 # Python
 __pycache__/
 *.pyc
+
+# 러너가 생성하는 로컬 MCP 설정
+.mcp.json

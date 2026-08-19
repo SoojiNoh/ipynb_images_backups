@@ -190,23 +190,26 @@ if [[ ! -f "$CONNECTION" ]]; then
 else
     MCP_URL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$CONNECTION" 2>>"$LOG")"
     MCP_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$CONNECTION" 2>>"$LOG")"
-    MANUAL="claude mcp add --transport http iphone $MCP_URL --header \"Authorization: Bearer $MCP_TOKEN\""
-
     ok "토큰 $MCP_TOKEN"
 
-    if ! command -v claude >/dev/null 2>&1; then
-        warn "claude CLI 를 찾지 못했습니다. 아래를 실행하세요:"
-        note "$MANUAL"
-    else
-        claude mcp remove iphone >/dev/null 2>&1     # 이미 있으면 갈아끼운다
-        if claude mcp add --transport http iphone "$MCP_URL" \
-                --header "Authorization: Bearer $MCP_TOKEN" >>"$LOG" 2>&1; then
+    # claude CLI 는 버전마다 등록 명령이 다르다(`--transport` 는 최근에 생겼다).
+    # 헬퍼가 순서대로 시도하고, 전부 안 되면 .mcp.json 을 써 준다.
+    RESULT="$(bash tools/register_mcp.sh "$MCP_URL" "$MCP_TOKEN" iphone 2>>"$LOG")"
+
+    case "$RESULT" in
+        transport|add-json)
             ok "'iphone' 으로 등록 완료 — 해제는 claude mcp remove iphone"
-        else
-            warn "자동 등록에 실패했습니다. 아래를 직접 실행하세요:"
-            note "$MANUAL"
-        fi
-    fi
+            ;;
+        fallback-json:*)
+            ok "설정 파일에 기록: ${RESULT#fallback-json:}"
+            note "claude CLI 가 등록 명령을 지원하지 않아 .mcp.json 에 적었습니다."
+            note "이 폴더에서 claude 를 실행하면 자동으로 읽힙니다."
+            ;;
+        *)
+            warn "등록에 실패했습니다. 아래를 직접 실행하세요:"
+            note "claude mcp add-json iphone '{\"type\":\"http\",\"url\":\"$MCP_URL\",\"headers\":{\"Authorization\":\"Bearer $MCP_TOKEN\"}}'"
+            ;;
+    esac
 fi
 
 cat <<EOF
