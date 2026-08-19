@@ -45,6 +45,29 @@ die() {
     copy_log_and_exit
 }
 
+# 시뮬레이터가 실제로 Booted 상태가 될 때까지 기다린다.
+#
+# simctl boot 은 이미 켜져 있으면 실패하고, "Shutting Down" 중이면 역시 실패한다.
+# 상태를 보고 필요할 때만 부팅하고, 전이 중이면 끝날 때까지 기다려야 한다.
+ensure_booted() {
+    local state
+    for _ in $(seq 1 60); do
+        state="$(xcrun simctl list devices 2>/dev/null \
+            | grep -F "$UDID" \
+            | sed -E 's/.*\(([^)]*)\)[[:space:]]*$/\1/')"
+
+        case "$state" in
+            Booted)   return 0 ;;
+            Shutdown) xcrun simctl boot "$UDID" >>"$LOG" 2>&1 ;;
+            *)        : ;;   # Booting / Shutting Down / Creating — 기다린다
+        esac
+        sleep 1
+    done
+
+    printf '마지막 상태: %s\n' "${state:-알 수 없음}" >> "$LOG"
+    return 1
+}
+
 # --- 1. 시뮬레이터 고르기 ----------------------------------------------------
 
 step "시뮬레이터 찾기"
@@ -78,14 +101,14 @@ note "$UDID"
 
 step "시뮬레이터 부팅"
 
-BOOT_OUTPUT="$(xcrun simctl boot "$UDID" 2>&1)"
-printf '%s\n' "$BOOT_OUTPUT" >> "$LOG"
-if [[ -n "$BOOT_OUTPUT" && "$BOOT_OUTPUT" != *"Booted"* && "$BOOT_OUTPUT" != *"current state: Booted"* ]]; then
-    warn "$BOOT_OUTPUT"
-fi
-
 open -a Simulator 2>>"$LOG"
-ok "완료"
+
+if ensure_booted; then
+    ok "완료"
+else
+    die "시뮬레이터가 부팅되지 않았습니다." \
+        "시뮬레이터 앱을 완전히 종료한 뒤 다시 실행해 보세요."
+fi
 
 # --- 3. 샘플 사진 -------------------------------------------------------------
 
@@ -156,8 +179,18 @@ ok "빌드 성공"
 
 step "설치 및 실행"
 
+# 빌드에 1~2분이 걸리는 동안 시뮬레이터가 꺼졌을 수 있다. 다시 확인한다.
+if ! ensure_booted; then
+    die "설치 직전에 시뮬레이터가 꺼져 있습니다." \
+        "시뮬레이터 창을 닫지 말고 다시 실행해 주세요."
+fi
+
 if ! xcrun simctl install "$UDID" "$APP_PATH" 2>>"$LOG"; then
-    die "시뮬레이터에 설치하지 못했습니다."
+    warn "설치 실패 — 부팅 상태를 다시 맞추고 한 번 더 시도합니다."
+    ensure_booted
+    if ! xcrun simctl install "$UDID" "$APP_PATH" 2>>"$LOG"; then
+        die "시뮬레이터에 설치하지 못했습니다."
+    fi
 fi
 
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist" 2>/dev/null)"
