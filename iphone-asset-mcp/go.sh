@@ -12,7 +12,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
-BOLD=$'\033[1m'; DIM=$'\033[2m'; YELLOW=$'\033[33m'; GREEN=$'\033[32m'; OFF=$'\033[0m'
+BOLD=$'\033[1m'; DIM=$'\033[2m'; YELLOW=$'\033[33m'; GREEN=$'\033[32m'; RED=$'\033[31m'; OFF=$'\033[0m'
 
 banner() { printf '\n%s%s%s\n' "$BOLD" "$1" "$OFF"; }
 info()   { printf '    %s\n' "$1"; }
@@ -23,14 +23,44 @@ hint()   { printf '    %s%s%s\n' "$DIM" "$1" "$OFF"; }
 banner "1/3  최신 코드 받기"
 
 BRANCH="$(git -C .. rev-parse --abbrev-ref HEAD 2>/dev/null)"
+
 if [[ -z "$BRANCH" || "$BRANCH" == "HEAD" ]]; then
     hint "git 저장소가 아니거나 브랜치를 알 수 없어 건너뜁니다."
-elif git -C .. pull --ff-only origin "$BRANCH" 2>&1 | sed 's/^/    /'; then
-    :
 else
-    printf '    %s!%s pull 을 건너뜁니다 (로컬 변경이 있거나 네트워크 문제).\n' "$YELLOW" "$OFF"
-    hint "이미 받아둔 코드로 계속 진행합니다."
+    PULL_OUTPUT="$(git -C .. pull --ff-only origin "$BRANCH" 2>&1)"
+    PULL_STATUS=$?
+    printf '%s\n' "$PULL_OUTPUT" | sed 's/^/    /'
+
+    if (( PULL_STATUS != 0 )); then
+        # 여기서 조용히 넘어가면 옛날 스크립트로 계속 진행하게 되고,
+        # 이미 고친 문제가 고쳐지지 않은 것처럼 보인다. 멈추는 편이 낫다.
+        printf '\n    %s✗%s 최신 코드를 받지 못했습니다. 옛 버전으로 진행하면 안 됩니다.\n\n' "$RED" "$OFF"
+
+        if [[ "$PULL_OUTPUT" == *"local changes"* || "$PULL_OUTPUT" == *"overwritten"* ]]; then
+            info "로컬에서 고친 파일이 막고 있습니다. 버려도 되면:"
+            info ""
+            info "    git -C .. checkout -- iphone-asset-mcp && bash go.sh"
+        elif [[ "$PULL_OUTPUT" == *"diverge"* || "$PULL_OUTPUT" == *"non-fast-forward"* ]]; then
+            info "로컬 커밋이 갈라졌습니다. 원격 것으로 맞추려면:"
+            info ""
+            info "    git -C .. fetch origin $BRANCH && git -C .. reset --hard origin/$BRANCH && bash go.sh"
+        else
+            info "위 메시지를 보고 해결한 뒤 다시 실행하세요."
+        fi
+        printf '\n'
+        exit 1
+    fi
 fi
+
+# 이번 실행에 필요한 파일이 실제로 있는지 확인한다.
+for required in tools/register_mcp.sh run-simulator.sh setup.sh; do
+    if [[ ! -f "$required" ]]; then
+        printf '\n    %s✗%s %s 가 없습니다. 코드가 최신이 아닙니다.\n' "$RED" "$OFF" "$required"
+        info "    git -C .. fetch origin $BRANCH && git -C .. reset --hard origin/$BRANCH"
+        printf '\n'
+        exit 1
+    fi
+done
 
 # --- 2. 환경 점검 및 서명 -----------------------------------------------------
 
