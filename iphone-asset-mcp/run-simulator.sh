@@ -192,22 +192,23 @@ else
     MCP_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$CONNECTION" 2>>"$LOG")"
     ok "토큰 $MCP_TOKEN"
 
-    # claude CLI 는 버전마다 등록 명령이 다르다(`--transport` 는 최근에 생겼다).
-    # 헬퍼가 순서대로 시도하고, 전부 안 되면 .mcp.json 을 써 준다.
+    # 등록은 헬퍼가 맡는다. 항상 .mcp.json 을 쓰고, CLI 가 확실히 지원할 때만
+    # 전역 등록까지 한다. 지원 확인 없이 claude 를 부르면 대화 세션이 떠 버린다.
     RESULT="$(bash tools/register_mcp.sh "$MCP_URL" "$MCP_TOKEN" iphone 2>>"$LOG")"
 
     case "$RESULT" in
-        transport|add-json)
-            ok "'iphone' 으로 등록 완료 — 해제는 claude mcp remove iphone"
+        both:*)
+            ok "'iphone' 으로 등록 완료 — 어느 폴더에서 claude 를 띄워도 붙습니다"
+            note "해제하려면: claude mcp remove iphone"
             ;;
-        fallback-json:*)
-            ok "설정 파일에 기록: ${RESULT#fallback-json:}"
-            note "claude CLI 가 등록 명령을 지원하지 않아 .mcp.json 에 적었습니다."
-            note "이 폴더에서 claude 를 실행하면 자동으로 읽힙니다."
+        file:*)
+            ok "설정 파일에 기록: ${RESULT#file:}"
+            note "이 claude CLI 는 등록 명령을 지원하지 않아 .mcp.json 으로 붙입니다."
+            note "반드시 이 폴더에서 claude 를 실행하세요:"
+            note "  cd $PWD && claude"
             ;;
         *)
-            warn "등록에 실패했습니다. 아래를 직접 실행하세요:"
-            note "claude mcp add-json iphone '{\"type\":\"http\",\"url\":\"$MCP_URL\",\"headers\":{\"Authorization\":\"Bearer $MCP_TOKEN\"}}'"
+            warn "등록 결과를 확인하지 못했습니다. 로그를 보세요."
             ;;
     esac
 fi

@@ -4,10 +4,13 @@
 #
 #   tools/register_mcp.sh <url> <token> [이름]
 #
-# claude CLI 는 버전마다 등록 명령이 다르다. `--transport` 는 비교적 최근에
-# 생겼고, 그 전에는 `add-json` 을 썼으며, 아예 없던 시절도 있다.
-# 그래서 순서대로 시도하고, 전부 실패하면 저장소에 .mcp.json 을 써 둔다.
-# (.mcp.json 은 해당 디렉터리에서 claude 를 띄울 때 자동으로 읽힌다.)
+# 순서가 중요하다. 먼저 .mcp.json 을 쓴다 — CLI 버전과 무관하게 항상 되고,
+# Claude Code 가 그 폴더에서 실행될 때 자동으로 읽는다. 그다음 전역 등록을
+# 시도하되 **지원이 확인된 문법만** 쓴다.
+#
+# 확인 없이 claude 를 부르면 안 된다. 인자를 못 알아들은 CLI 는 그것을 프롬프트로
+# 해석해 대화 세션을 띄워 버리고, 스크립트는 터미널을 빼앗긴 채 멈춘다.
+# 그래서 --help 로 먼저 확인하고, 모든 호출에 </dev/null 을 붙인다.
 
 set -uo pipefail
 
@@ -18,8 +21,9 @@ NAME="${3:-iphone}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_JSON="$REPO_ROOT/.mcp.json"
 
-emit_json() {
-    python3 - "$NAME" "$URL" "$TOKEN" "$CONFIG_JSON" <<'PY'
+# --- 1. 설정 파일: 항상, 무조건 ------------------------------------------------
+
+python3 - "$NAME" "$URL" "$TOKEN" "$CONFIG_JSON" <<'PY'
 import json, os, sys
 name, url, token, path = sys.argv[1:5]
 
@@ -41,28 +45,35 @@ with open(path, "w") as handle:
     json.dump(config, handle, indent=2, ensure_ascii=False)
     handle.write("\n")
 PY
-}
 
 if ! command -v claude >/dev/null 2>&1; then
-    emit_json
-    echo "fallback-json:$CONFIG_JSON"
+    echo "file:$CONFIG_JSON"
     exit 0
 fi
 
-# 같은 이름이 이미 있으면 갈아끼운다. 스코프별로 지워 본다.
-claude mcp remove "$NAME" >/dev/null 2>&1
-claude mcp remove "$NAME" --scope user >/dev/null 2>&1
-claude mcp remove "$NAME" --scope local >/dev/null 2>&1
+# --- 2. 전역 등록: 지원이 확인될 때만 ------------------------------------------
 
-# 1) 최신 문법
-if claude mcp add --transport http "$NAME" "$URL" \
-        --header "Authorization: Bearer $TOKEN" >/dev/null 2>&1; then
-    echo "transport"
+# 도움말 호출에도 </dev/null 을 붙인다. `mcp` 하위 명령이 없는 버전이면
+# 이것조차 대화 세션으로 흘러갈 수 있다.
+MCP_HELP="$(claude mcp --help </dev/null 2>&1)"
+if [[ "$MCP_HELP" != *"add"* ]]; then
+    echo "file:$CONFIG_JSON"
     exit 0
 fi
 
-# 2) add-json — --transport 가 생기기 전 버전
-PAYLOAD="$(python3 -c '
+ADD_HELP="$(claude mcp add --help </dev/null 2>&1)"
+registered=""
+
+if [[ "$ADD_HELP" == *"--transport"* ]]; then
+    claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
+    if claude mcp add --transport http "$NAME" "$URL" \
+            --header "Authorization: Bearer $TOKEN" </dev/null >/dev/null 2>&1; then
+        registered="transport"
+    fi
+fi
+
+if [[ -z "$registered" && "$MCP_HELP" == *"add-json"* ]]; then
+    PAYLOAD="$(python3 -c '
 import json, sys
 print(json.dumps({
     "type": "http",
@@ -70,11 +81,14 @@ print(json.dumps({
     "headers": {"Authorization": "Bearer " + sys.argv[2]},
 }))' "$URL" "$TOKEN")"
 
-if claude mcp add-json "$NAME" "$PAYLOAD" >/dev/null 2>&1; then
-    echo "add-json"
-    exit 0
+    claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
+    if claude mcp add-json "$NAME" "$PAYLOAD" </dev/null >/dev/null 2>&1; then
+        registered="add-json"
+    fi
 fi
 
-# 3) 그래도 안 되면 설정 파일을 직접 쓴다.
-emit_json
-echo "fallback-json:$CONFIG_JSON"
+if [[ -n "$registered" ]]; then
+    echo "both:$CONFIG_JSON"
+else
+    echo "file:$CONFIG_JSON"
+fi
