@@ -9,8 +9,9 @@
 # "A build only device cannot be used to run this target" 같은
 # 대상 선택 문제와 무관하게 동작한다.
 #
-# 시뮬레이터에는 사진·연락처가 거의 없다. 빌드가 되는지, MCP 서버가
-# 뜨는지 확인하는 용도이고, 실제 데이터는 진짜 iPhone 이 필요하다.
+# 시뮬레이터의 사진 라이브러리가 비어 있으면 photos_* 도구를 시험할 수 없으므로,
+# 저장소에 든 이미지를 처음 한 번 넣어 준다. 연락처·캘린더·걸음수는 여전히 비어 있고,
+# 그쪽까지 보려면 진짜 iPhone 이 필요하다.
 
 set -uo pipefail
 
@@ -86,7 +87,39 @@ fi
 open -a Simulator 2>>"$LOG"
 ok "완료"
 
-# --- 3. 빌드 ----------------------------------------------------------------
+# --- 3. 샘플 사진 -------------------------------------------------------------
+
+step "샘플 사진 넣기"
+
+# 시뮬레이터의 사진 라이브러리는 사실상 비어 있어서 photos_* 도구를 시험할 수 없다.
+# 저장소에 들어 있는 이미지를 한 번만 넣어 둔다.
+SEED_MARKER="build/.photos-seeded-$UDID"
+
+if [[ -f "$SEED_MARKER" ]]; then
+    ok "이미 넣어두었습니다"
+    hint_line="다시 넣으려면: rm $SEED_MARKER"
+    printf '      %s%s%s\n' "$DIM" "$hint_line" "$OFF"
+else
+    SEED_FILES=()
+    # 스크린샷이 먼저다. 글자가 있어서 OCR(photos_read_text) 확인에 좋다.
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && SEED_FILES+=("$file")
+    done < <(find ../screenshots -type f \( -name '*.png' -o -name '*.jpg' \) 2>/dev/null | sort | head -20)
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && SEED_FILES+=("$file")
+    done < <(find ../images -type f \( -name '*.png' -o -name '*.jpg' \) -size -3M 2>/dev/null | sort | head -15)
+
+    if (( ${#SEED_FILES[@]} == 0 )); then
+        warn "넣을 이미지를 찾지 못해 건너뜁니다."
+    elif xcrun simctl addmedia "$UDID" "${SEED_FILES[@]}" >>"$LOG" 2>&1; then
+        mkdir -p build && touch "$SEED_MARKER"
+        ok "${#SEED_FILES[@]}장 추가 — photos_* 도구를 바로 시험할 수 있습니다"
+    else
+        warn "사진 추가에 실패했습니다. 클립보드 로그를 확인하세요."
+    fi
+fi
+
+# --- 4. 빌드 ----------------------------------------------------------------
 
 step "빌드 (처음에는 1~2분 걸립니다)"
 
@@ -119,7 +152,7 @@ APP_PATH="build/Build/Products/Debug-iphonesimulator/AssetBridge.app"
 
 ok "빌드 성공"
 
-# --- 4. 설치 및 실행 ---------------------------------------------------------
+# --- 5. 설치 및 실행 ---------------------------------------------------------
 
 step "설치 및 실행"
 
@@ -146,8 +179,12 @@ ${BOLD}다음 단계${OFF}
      claude mcp add --transport http iphone http://127.0.0.1:8765/mcp \\
        --header "Authorization: Bearer <앱에 표시된 토큰>"
 
-  ${DIM}시뮬레이터에는 사진·연락처가 거의 없습니다. 빌드와 연결 확인용이고,${OFF}
-  ${DIM}실제 데이터를 쓰려면 진짜 iPhone 에 설치해야 합니다.${OFF}
-  ${DIM}Finder 에서 이미지를 시뮬레이터 창에 끌어다 놓으면 사진 앱에 추가됩니다.${OFF}
+  ${BOLD}시험해 볼 것${OFF} — 사진은 넣어 두었습니다.
+     "내 아이폰 사진 몇 장인지 알려줘"    → photos_stats
+     "최근 사진들 한눈에 보여줘"           → photos_contact_sheet
+     "스크린샷에 적힌 글자 읽어줘"         → photos_read_text (OCR)
+
+  ${DIM}연락처·캘린더·걸음수는 시뮬레이터에 데이터가 없어 비어 있습니다.${OFF}
+  ${DIM}Finder 에서 이미지를 시뮬레이터 창에 끌어다 놓으면 사진이 더 추가됩니다.${OFF}
 
 EOF
