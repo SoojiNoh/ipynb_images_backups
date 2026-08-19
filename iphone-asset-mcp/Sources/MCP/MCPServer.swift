@@ -14,8 +14,10 @@ final class MCPServer {
         case info, warn, error
     }
 
-    /// 실패한 인증 시도를 상대 IP 별로 세어 무차별 대입에 제동을 건다.
-    /// 토큰을 사람이 옮길 수 있는 길이(60비트)로 줄인 만큼, 이 제동이 실질적인 방어선이다.
+    /// 무차별 대입 제동. 토큰이 20비트뿐이라 이 제동이 방어의 본체다.
+    ///
+    /// 두 겹으로 센다. IP 별 카운터만 두면 같은 랜 안에서 주소를 바꿔가며
+    /// 우회할 수 있으므로, 전체 실패 횟수도 따로 세어 함께 잠근다.
     private final class AuthThrottle {
         private struct Record {
             var failures = 0
@@ -24,11 +26,25 @@ final class MCPServer {
 
         private let lock = NSLock()
         private var records: [String: Record] = [:]
-        private let threshold = 10
-        private let penalty: TimeInterval = 300
+
+        private let perPeerThreshold = 5
+        private let perPeerPenalty: TimeInterval = 900
+
+        // IP 를 갈아타며 시도하는 경우까지 막는 전역 상한.
+        private let globalThreshold = 15
+        private let globalWindow: TimeInterval = 3600
+        private var globalFailures: [Date] = []
+        private var globalBlockedUntil: Date?
 
         func isBlocked(_ peer: String) -> Bool {
             lock.lock(); defer { lock.unlock() }
+
+            if let until = globalBlockedUntil {
+                if until > Date() { return true }
+                globalBlockedUntil = nil
+                globalFailures.removeAll()
+            }
+
             guard let until = records[peer]?.blockedUntil else { return false }
             if until > Date() { return true }
             records[peer] = nil          // 차단 시간이 지났으면 처음부터 다시 센다
@@ -37,12 +53,20 @@ final class MCPServer {
 
         func recordFailure(_ peer: String) {
             lock.lock(); defer { lock.unlock() }
+
             var record = records[peer] ?? Record()
             record.failures += 1
-            if record.failures >= threshold {
-                record.blockedUntil = Date().addingTimeInterval(penalty)
+            if record.failures >= perPeerThreshold {
+                record.blockedUntil = Date().addingTimeInterval(perPeerPenalty)
             }
             records[peer] = record
+
+            let now = Date()
+            globalFailures.append(now)
+            globalFailures.removeAll { now.timeIntervalSince($0) > globalWindow }
+            if globalFailures.count >= globalThreshold {
+                globalBlockedUntil = now.addingTimeInterval(globalWindow)
+            }
         }
 
         func recordSuccess(_ peer: String) {
@@ -92,7 +116,7 @@ final class MCPServer {
         }
 
         if let peer, throttle.isBlocked(peer) {
-            return .error("인증 실패가 반복되어 잠시 차단되었습니다. 5분 뒤 다시 시도하세요.", status: 429)
+            return .error("인증 실패가 반복되어 차단되었습니다. 잠시 뒤 다시 시도하세요.", status: 429)
         }
 
         switch (request.method, request.path) {
