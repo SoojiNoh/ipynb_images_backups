@@ -28,11 +28,11 @@ final class MCPServer {
         private var records: [String: Record] = [:]
 
         private let perPeerThreshold = 5
-        private let perPeerPenalty: TimeInterval = 900
+        private let perPeerPenalty: TimeInterval = 300
 
         // IP 를 갈아타며 시도하는 경우까지 막는 전역 상한.
         private let globalThreshold = 15
-        private let globalWindow: TimeInterval = 3600
+        private let globalWindow: TimeInterval = 900
         private var globalFailures: [Date] = []
         private var globalBlockedUntil: Date?
 
@@ -115,7 +115,10 @@ final class MCPServer {
             return .error("Local network only. 이 서버는 사설망에서만 접속할 수 있습니다.", status: 403)
         }
 
-        if let peer, throttle.isBlocked(peer) {
+        // 루프백(시뮬레이터·같은 Mac)은 제동 대상이 아니다. 이미 기계 안에 들어와 있는
+        // 상대에게 4자 토큰이 방어선일 수 없고, 정상 클라이언트가 자동 재시도하다
+        // 스스로 잠기는 쪽이 훨씬 잦다.
+        if let peer, !NetworkInfo.isLoopback(peer), throttle.isBlocked(peer) {
             return .error("인증 실패가 반복되어 차단되었습니다. 잠시 뒤 다시 시도하세요.", status: 429)
         }
 
@@ -161,7 +164,7 @@ final class MCPServer {
         let presented = request.bearerToken ?? request.query["token"]
         let granted = presented.map { TokenFactory.matches(presented: $0, expected: config.token) } ?? false
 
-        if let peer {
+        if let peer, !NetworkInfo.isLoopback(peer) {
             granted ? throttle.recordSuccess(peer) : throttle.recordFailure(peer)
         }
         return granted

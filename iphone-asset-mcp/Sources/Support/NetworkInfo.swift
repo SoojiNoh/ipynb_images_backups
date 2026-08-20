@@ -82,6 +82,14 @@ enum NetworkInfo {
         }
     }
 
+    /// 같은 기계에서 온 연결인지. 시뮬레이터와 Mac 은 네트워크를 공유하므로
+    /// 여기로 오는 요청은 사용자 본인이다. 무차별 대입 제동에서 제외한다.
+    static func isLoopback(_ raw: String) -> Bool {
+        var text = raw.lowercased()
+        if text.hasPrefix("::ffff:") { text = String(text.dropFirst("::ffff:".count)) }
+        return text == "::1" || text == "localhost" || text.hasPrefix("127.")
+    }
+
     /// 사설망 / 루프백 / Tailscale(CGNAT) 대역만 허용하기 위한 판정.
     static func isPrivateAddress(_ raw: String) -> Bool {
         var text = raw.lowercased()
