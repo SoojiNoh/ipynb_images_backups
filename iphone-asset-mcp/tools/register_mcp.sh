@@ -61,11 +61,20 @@ if [[ "$MCP_HELP" != *"add"* ]]; then
     exit 0
 fi
 
+# 등록을 시도하든 말든, 기존 항목은 **항상** 먼저 지운다.
+#
+# 설정은 두 군데에 있을 수 있다 — CLI 가 쓰는 ~/.claude.json 과 여기서 만드는
+# .mcp.json. 앞의 것이 우선하므로, 낡은 토큰이 담긴 CLI 항목을 남겨두면
+# 방금 갱신한 .mcp.json 이 무시되고 401 이 난다.
+claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
+claude mcp remove "$NAME" --scope local </dev/null >/dev/null 2>&1
+claude mcp remove "$NAME" --scope project </dev/null >/dev/null 2>&1
+claude mcp remove "$NAME" --scope user </dev/null >/dev/null 2>&1
+
 ADD_HELP="$(claude mcp add --help </dev/null 2>&1)"
 registered=""
 
 if [[ "$ADD_HELP" == *"--transport"* ]]; then
-    claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
     if claude mcp add --transport http "$NAME" "$URL" \
             --header "Authorization: Bearer $TOKEN" </dev/null >/dev/null 2>&1; then
         registered="transport"
@@ -81,7 +90,6 @@ print(json.dumps({
     "headers": {"Authorization": "Bearer " + sys.argv[2]},
 }))' "$URL" "$TOKEN")"
 
-    claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
     if claude mcp add-json "$NAME" "$PAYLOAD" </dev/null >/dev/null 2>&1; then
         registered="add-json"
     fi
