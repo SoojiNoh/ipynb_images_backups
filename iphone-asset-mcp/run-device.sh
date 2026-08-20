@@ -130,7 +130,32 @@ ok "팀 ID $TEAM_ID"
 
 step "기기 준비 상태"
 
-# devicectl 이 보고하는 기기 속성 하나를 읽는다. 못 읽으면 빈 문자열.
+# devicectl 이 찍는 State 열이 1차 근거다. 실제로 화면에 나오는 문자열이라
+# JSON 필드 이름보다 Xcode 버전 사이에서 덜 흔들린다.
+#
+#   connected            — 붙어 있고 준비 끝
+#   connected (no DDI)   — 붙어 있지만 개발자 디스크 이미지가 아직
+#   available (paired)   — 페어링 기록만 있고 지금은 붙어 있지 않음
+device_line() {
+    xcrun devicectl list devices 2>>"$LOG" | grep -F "$DEVICE_ID"
+}
+
+device_ready() {
+    [[ "$1" == *"connected"* && "$1" != *"no DDI"* ]]
+}
+
+state_phrase() {
+    if [[ -z "$1" ]];                then echo "목록에 없음"
+    elif [[ "$1" == *"no DDI"* ]];   then echo "연결됨, 개발자 이미지 준비 중"
+    elif [[ "$1" == *"connected"* ]]; then echo "연결됨"
+    elif [[ "$1" == *"available"* ]]; then echo "페어링 기록만 있음, 지금은 붙어 있지 않음"
+    else                                  echo "알 수 없음"
+    fi
+}
+
+# deviceProperties 는 기기가 실제로 붙어 있을 때만 살아 있는 값이다.
+# 떨어져 있을 때 읽은 developerModeStatus 는 기기의 진실이 아니므로,
+# 이 값만 보고 사용자를 막지 않는다. 참고용으로만 쓴다.
 device_flag() {
     xcrun devicectl list devices --json-output "$DEVICE_JSON" >>"$LOG" 2>&1
     python3 - "$DEVICE_JSON" "$DEVICE_ID" "$1" <<'PY'
@@ -155,92 +180,48 @@ for device in payload.get("result", {}).get("devices", []):
 PY
 }
 
-DEV_MODE="$(device_flag developerModeStatus)"
-case "$DEV_MODE" in
-    enabled)
-        ok "개발자 모드 켜짐"
-        ;;
-    "")
-        warn "개발자 모드 상태를 읽지 못했습니다. 그대로 진행합니다."
-        ;;
-    *)
-        die "iPhone 의 개발자 모드가 꺼져 있습니다 (상태: $DEV_MODE)." \
-            "iOS 16 부터는 이게 꺼져 있으면 어떤 방법으로도 앱을 설치할 수 없습니다." \
-            "기기에서 직접 켜야 합니다 — Mac 에서는 켤 수 없습니다:" \
-            "" \
-            "  설정 > 개인정보 보호 및 보안 > 개발자 모드 > 켬" \
-            "  재시동을 묻습니다. 재시동 뒤 잠금을 풀면 확인 창이 한 번 더 뜹니다." \
-            "" \
-            "그다음 이 명령을 다시 실행하세요."
-        ;;
-esac
+STATE_LINE="$(device_line)"
 
-# DDI(개발자 디스크 이미지)가 기기에 올라가야 xcodebuild 가 이 기기를 목적지로
-# 인정한다. devicectl 의 State 열에 'connected (no DDI)' 라고 나오는 그 단계다.
-#
-# 처음 연결했거나 iOS·Xcode 를 올린 직후에는 준비에 몇 분이 걸리고, 그동안 빌드를
-# 걸면 "Device is busy (Waiting to reconnect...)" 로 죽는다. 기다렸다 진행한다.
-# devicectl 의 사람이 읽는 출력에서 이 기기 줄의 State 를 본다.
-# 'connected (no DDI)' 는 실제로 화면에 찍히는 문자열이라, JSON 필드 이름보다
-# Xcode 버전 사이에서 덜 흔들린다. JSON 은 보조로만 쓴다.
-#
-# 0 = 준비됨, 1 = 아직, 2 = 알 수 없음
-ddi_ready() {
-    local text json
-    text="$(xcrun devicectl list devices 2>>"$LOG" | grep -F "$DEVICE_ID")"
-    if [[ -n "$text" ]]; then
-        [[ "$text" == *"no DDI"* ]] && return 1
-        [[ "$text" == *"connected"* ]] && return 0
-    fi
-
-    json="$(device_flag ddiServicesAvailable)"
-    [[ "$json" == "true" ]] && return 0
-    [[ "$json" == "false" ]] && return 1
-    return 2
-}
-
-ddi_ready
-DDI_STATE=$?
-
-if (( DDI_STATE == 0 )); then
+if device_ready "$STATE_LINE"; then
     ok "기기 준비 완료"
-elif (( DDI_STATE == 2 )); then
-    warn "기기 준비 상태를 읽지 못했습니다. 그대로 진행합니다."
 else
-    printf '    기기를 준비하는 중입니다(DDI 마운트). 최대 5분 기다립니다'
+    printf '    준비를 기다립니다 (지금: %s). 최대 5분' "$(state_phrase "$STATE_LINE")"
 
-    # 연결을 한 번 건드려 준비를 앞당긴다. 준비 중에는 이 명령 자체가 오래
-    # 걸릴 수 있으므로 뒤에서 돌리고, 끝나면 정리한다.
+    # 연결을 한 번 건드리면 터널과 DDI 준비가 시작된다. 준비 중에는 이 명령
+    # 자체가 오래 걸릴 수 있으므로 뒤에서 돌리고, 끝나면 정리한다.
     ( xcrun devicectl device info details --device "$DEVICE_ID" >>"$LOG" 2>&1 ) &
     NUDGE_PID=$!
 
     for _ in $(seq 1 60); do
         sleep 5
         printf '.'
-        ddi_ready
-        DDI_STATE=$?
-        (( DDI_STATE == 1 )) || break
+        STATE_LINE="$(device_line)"
+        device_ready "$STATE_LINE" && break
     done
     printf '\n'
 
     kill "$NUDGE_PID" 2>/dev/null
     wait "$NUDGE_PID" 2>/dev/null
 
-    if (( DDI_STATE == 1 )); then
-        die "기기가 아직 개발용으로 준비되지 않았습니다 (DDI 미마운트)." \
-            "devicectl 이 계속 'connected (no DDI)' 로 보고합니다. 이 상태에서는" \
-            "xcodebuild 가 iPhone 을 빌드 대상으로 인정하지 않습니다." \
-            "" \
-            "기기에서 확인할 것 — 어느 것도 Mac 에서 대신 할 수 없습니다:" \
-            "  1. iPhone 잠금을 풀고, 준비가 끝날 때까지 잠기지 않게 두세요" \
-            "  2. 설정 > 개인정보 보호 및 보안 > 개발자 모드 가 켜져 있는지" \
-            "  3. 케이블을 뽑았다 다시 꽂고 '이 컴퓨터를 신뢰' 를 누르세요" \
-            "" \
-            "Xcode > Window > Devices and Simulators 를 열어 두면 'Preparing" \
-            "device for development' 진행 상황이 보입니다. 끝난 뒤 다시 실행하세요."
+    if device_ready "$STATE_LINE"; then
+        ok "기기 준비 완료"
+    else
+        # 여기서 멈추지 않는다. 이 신호들은 기기가 붙어 있을 때만 정확한데,
+        # 붙어 있지 않다는 게 지금 상태다. 못 미더운 근거로 사용자를 탓하느니
+        # 진짜 작업을 시켜 보고 그 결과로 말하는 편이 낫다.
+        warn "기기가 아직 준비되지 않았습니다 — $(state_phrase "$STATE_LINE")"
+        note "그래도 빌드를 시도합니다. xcodebuild 는 자체적으로 기기를 더 기다립니다."
+        note ""
+        note "실패하면 대개 이 중 하나입니다:"
+        note "  - iPhone 잠금이 걸려 있음 (풀어 두세요)"
+        note "  - 케이블이 빠졌거나 충전 전용 케이블"
+        note "  - 재시동 뒤 '이 컴퓨터를 신뢰' 를 다시 안 눌렀음"
+        DEV_MODE="$(device_flag developerModeStatus)"
+        if [[ "$DEV_MODE" == "disabled" ]]; then
+            note "  - 개발자 모드 꺼짐 (devicectl 보고값이며, 기기가 붙어 있지 않으면"
+            note "    이 값은 부정확합니다. 이미 켜 두셨다면 무시하세요)"
+        fi
     fi
-
-    ok "기기 준비 완료"
 fi
 
 # --- 4. 빌드 ----------------------------------------------------------------
