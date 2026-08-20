@@ -84,8 +84,40 @@ def summarize(profile):
     }
 
 
+def collect():
+    """모든 프로파일을 읽어 팀별 등록 기기 집합을 만든다."""
+    paths = []
+    for directory in SEARCH_DIRS:
+        if directory.is_dir():
+            paths.extend(sorted(directory.glob("*.mobileprovision")))
+            paths.extend(sorted(directory.glob("*.provisionprofile")))
+
+    by_team = {}
+    for path in paths:
+        profile = decode(path)
+        if profile is None:
+            continue
+        info = summarize(profile)
+        if not info["team"]:
+            continue
+        by_team.setdefault(info["team"], set()).update(d.lower() for d in info["devices"])
+    return by_team
+
+
+def emit_json():
+    """셸에서 쓰기 위한 기계용 출력."""
+    import json
+    by_team = collect()
+    print(json.dumps({"teams": {k: sorted(v) for k, v in by_team.items()}}))
+    return 0 if by_team else 1
+
+
 def main():
-    current = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
+    argv = sys.argv[1:]
+    if "--json" in argv:
+        return emit_json()
+
+    current = (argv[0] if argv else "").strip().lower()
 
     paths = []
     for directory in SEARCH_DIRS:

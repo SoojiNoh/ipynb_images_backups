@@ -129,15 +129,59 @@ if [[ -n "$TEAM_OVERRIDE" ]]; then
     ok "팀 $TEAM_ID (ASSETBRIDGE_TEAM 으로 지정됨)"
 
 elif (( ACCOUNT_STATUS == 0 )); then
-    # 설정 파일의 팀이 실제 계정에 있는 팀인지 확인한다. 예전 인증서에서 뽑아 둔
+    # 무료 팀은 기기 3대가 한도다. 이미 다 찼고 그 안에 이 폰이 없으면, 그 팀으로는
+    # 빌드가 반드시 실패한다. 계정을 새로 추가한 사람이 옛 팀으로 또 실패하는 일이
+    # 없도록, 쓸 수 없는 팀은 뒤로 미룬다.
+    #
+    # 근거는 프로파일에 담긴 등록 기기 목록이다. 발급 시점의 사본이라 완전하지
+    # 않을 수 있으므로, 확실히 '가득 참' 인 팀만 밀어낸다.
+    PROFILE_JSON="$(python3 tools/list_devices.py --json 2>>"$LOG")"
+
+    team_unusable() {
+        [[ -n "$PROFILE_JSON" ]] || return 1
+        printf '%s' "$PROFILE_JSON" | python3 -c '
+import json, sys
+
+team, device = sys.argv[1:3]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(1)
+
+devices = {d.lower() for d in (data.get("teams") or {}).get(team, [])}
+if not devices or device.lower() in devices:
+    raise SystemExit(1)      # 모르거나, 이미 등록돼 있음 → 쓸 수 있다
+raise SystemExit(0 if len(devices) >= 3 else 1)
+' "$1" "$DEVICE_UDID" 2>>"$LOG"
+    }
+
+    # 쓸 수 있는 팀만 추린다. 하나도 없으면 원래 목록 그대로 간다.
+    USABLE_TEAMS="$(while IFS=$'\t' read -r tid rest; do
+        [[ -n "$tid" ]] || continue
+        team_unusable "$tid" || printf '%s\t%s\n' "$tid" "$rest"
+    done <<< "$ACCOUNT_TEAMS")"
+
+    if [[ -z "$USABLE_TEAMS" ]]; then
+        warn "로그인된 팀이 모두 기기 등록 한도에 찼습니다. 그래도 시도해 봅니다."
+        USABLE_TEAMS="$ACCOUNT_TEAMS"
+    elif [[ "$USABLE_TEAMS" != "$ACCOUNT_TEAMS" ]]; then
+        note "기기 한도가 찬 팀은 건너뜁니다."
+    fi
+
+    # 설정 파일의 팀이 쓸 수 있는 팀 중에 있는지 확인한다. 예전 인증서에서 뽑아 둔
     # 값이 남아 있으면 여기서 걸린다 — 이게 'No Account for Team' 의 정체다.
-    if [[ -n "$CONFIG_TEAM" ]] && printf '%s\n' "$ACCOUNT_TEAMS" | cut -f1 | grep -qx "$CONFIG_TEAM"; then
+    if [[ -n "$CONFIG_TEAM" ]] && printf '%s\n' "$USABLE_TEAMS" | cut -f1 | grep -qx "$CONFIG_TEAM"; then
         TEAM_ID="$CONFIG_TEAM"
     else
-        TEAM_ID="$(printf '%s\n' "$ACCOUNT_TEAMS" | head -1 | cut -f1)"
+        TEAM_ID="$(printf '%s\n' "$USABLE_TEAMS" | head -1 | cut -f1)"
         if [[ "$CONFIG_TEAM" != "$TEAM_ID" ]]; then
             if [[ -n "$CONFIG_TEAM" ]]; then
-                warn "설정 파일의 팀 $CONFIG_TEAM 은 로그인된 계정에 없습니다. $TEAM_ID 로 바꿉니다."
+                # 왜 바꾸는지 정확히 말한다. 계정에 없는 것과 한도가 찬 것은 다르다.
+                if printf '%s\n' "$ACCOUNT_TEAMS" | cut -f1 | grep -qx "$CONFIG_TEAM"; then
+                    warn "팀 $CONFIG_TEAM 은 기기 등록 한도가 차서 이 폰을 넣을 수 없습니다. $TEAM_ID 로 바꿉니다."
+                else
+                    warn "설정 파일의 팀 $CONFIG_TEAM 은 로그인된 계정에 없습니다. $TEAM_ID 로 바꿉니다."
+                fi
             fi
             # 생성 파일이므로 그 자리에서 고친다. 그래야 Xcode 로 직접 열었을 때도 맞다.
             # sed -i 는 macOS 와 GNU 의 문법이 달라 조용히 어긋난다. python 으로 쓴다.
