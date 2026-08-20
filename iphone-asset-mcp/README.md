@@ -298,6 +298,7 @@ python3 tools/list_devices.py
 | 빌드가 `Device is busy` / `no DDI` | iPhone 개발자 모드가 꺼져 있거나 준비가 안 끝났습니다. 설정 > 개인정보 보호 및 보안 > 개발자 모드 > 켬 → 재시동. `run-device.sh` 가 준비를 최대 5분 기다립니다 |
 | `No Account for Team` / `No profiles for` | Xcode 에 Apple ID 계정이 없습니다. 키체인 인증서만으로는 프로파일을 만들 수 없습니다. Xcode > Settings > Accounts > '+' > Apple ID |
 | `maximum number of registered ... devices` | 무료 Apple 계정의 기기 등록 한도(3대)입니다. 지워서 늘릴 수 없고 1년 주기로만 초기화됩니다. 무엇이 차지하고 있는지는 `python3 tools/list_devices.py` 로 봅니다. 해결하려면 새 Apple 계정([account.apple.com/account](https://account.apple.com/account) — 끝의 `/account` 가 있어야 생성 폼입니다)을 만들어 Xcode > Settings > Accounts 에 추가하세요. Xcode 로그인 창에서는 계정을 만들 수 없습니다 |
+| 계정 생성 시 `해당 이메일 주소를 사용할 수 없습니다` | 그 주소가 이미 Apple 계정입니다(예전 로그인, 또는 다른 계정의 복구용 이메일). 만들지 말고 그 주소로 **로그인**하세요. 삭제된 Apple 계정의 주소는 영구히 재사용할 수 없으니, 그 경우 새 이메일을 만드세요 |
 | 403 Forbidden | 사설망 밖에서 접속. Tailscale 을 쓰거나 LAN 전용 스위치를 끄세요 |
 | 사진이 안 나옴 | iCloud 원본이 기기에 없어 다운로드 중일 수 있습니다. 잠시 후 재시도 |
 | 도구가 목록에 없음 | 해당 도메인 스위치가 꺼져 있거나, 쓰기 도구인데 쓰기 허용이 꺼져 있음 |
