@@ -292,7 +292,21 @@ step "빌드 및 서명 (처음에는 1~2분 걸립니다)"
 
 # -destination-timeout 을 늘린다. 기본값은 짧아서, 기기가 잠깐 재연결되는 사이에
 # "Timed out waiting for all destinations" 로 죽는다. 실제로 흔한 실패다.
+# 번들 ID 도 바꿔 끼울 수 있어야 한다. 무료 팀에서 한 번 등록된 App ID 는
+# 다른 팀이 같은 이름을 쓰지 못하는 경우가 있어서, Apple ID 를 바꾸면
+# "Failed to register bundle identifier" 로 막히곤 한다.
+#
+#   ASSETBRIDGE_BUNDLE_ID=com.내이름.assetbridge2 bash go.sh
+#
+# 명령줄로 준 빌드 설정은 xcconfig 보다 우선하므로 파일을 고칠 필요가 없다.
+EXTRA_SETTINGS=()
+if [[ -n "${ASSETBRIDGE_BUNDLE_ID:-}" ]]; then
+    EXTRA_SETTINGS+=("ASSETBRIDGE_BUNDLE_ID=$ASSETBRIDGE_BUNDLE_ID")
+    ok "번들 ID $ASSETBRIDGE_BUNDLE_ID (ASSETBRIDGE_BUNDLE_ID 로 지정됨)"
+fi
+
 run_build() {
+    # macOS 기본 bash 는 3.2 라, set -u 아래에서 빈 배열을 그냥 펼치면 죽는다.
     xcodebuild \
         -project AssetBridge.xcodeproj \
         -scheme AssetBridge \
@@ -302,6 +316,7 @@ run_build() {
         -derivedDataPath build \
         -allowProvisioningUpdates \
         DEVELOPMENT_TEAM="$TEAM_ID" \
+        ${EXTRA_SETTINGS[@]+"${EXTRA_SETTINGS[@]}"} \
         build 2>&1
 }
 
@@ -353,8 +368,9 @@ if (( BUILD_STATUS != 0 )); then
         note "서명 설정이 아직 안 붙었습니다. Xcode 에서 AssetBridge 타겟 >"
         note "Signing & Capabilities > Team 을 직접 골라 주세요."
     elif [[ "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* ]]; then
-        note "번들 ID 가 이미 다른 계정에 등록되어 있습니다."
-        note "Config/Local.xcconfig 의 ASSETBRIDGE_BUNDLE_ID 를 다른 값으로 바꾸세요."
+        note "이 번들 ID 는 이미 다른 팀이 가져갔습니다. 이름만 바꾸면 됩니다:"
+        note ""
+        note "  ASSETBRIDGE_BUNDLE_ID=com.${USER:-me}.assetbridge2 bash go.sh"
     elif [[ "$BUILD_OUTPUT" == *"Device is busy"* \
             || "$BUILD_OUTPUT" == *"Timed out waiting for all destinations"* \
             || "$BUILD_OUTPUT" == *"Ineligible destinations"* ]]; then
