@@ -282,6 +282,13 @@ HealthKit(건강 데이터)은 기술적으로 가능하지만 별도 entitlemen
 bash tools/doctor.sh
 ```
 
+실기기 서명이 막힐 때는 무엇이 등록돼 있는지부터 봅니다. 무료 Apple ID 는
+등록 기기를 볼 수 있는 웹 포털이 없어서, 프로비저닝 프로파일 안을 들여다봅니다.
+
+```bash
+python3 tools/list_devices.py
+```
+
 | 증상 | 원인 / 해결 |
 |---|---|
 | Mac 에서 연결 실패 | 두 기기가 같은 Wi-Fi 인지 확인. 게스트 네트워크나 AP 격리(client isolation)면 통신이 막힙니다 |
