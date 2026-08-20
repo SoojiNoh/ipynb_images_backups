@@ -11,6 +11,10 @@
 # 확인 없이 claude 를 부르면 안 된다. 인자를 못 알아들은 CLI 는 그것을 프롬프트로
 # 해석해 대화 세션을 띄워 버리고, 스크립트는 터미널을 빼앗긴 채 멈춘다.
 # 그래서 --help 로 먼저 확인하고, 모든 호출에 </dev/null 을 붙인다.
+#
+# 또한 `command` 를 앞에 붙인다. 사용자 셸에서 claude 가 함수나 별칭으로
+# 래핑돼 있으면 하위 명령이 프롬프트로 넘어가 버린다. command 는 그 래핑을
+# 건너뛰고 실제 실행 파일을 부른다.
 
 set -uo pipefail
 
@@ -55,7 +59,7 @@ fi
 
 # 도움말 호출에도 </dev/null 을 붙인다. `mcp` 하위 명령이 없는 버전이면
 # 이것조차 대화 세션으로 흘러갈 수 있다.
-MCP_HELP="$(claude mcp --help </dev/null 2>&1)"
+MCP_HELP="$(command claude mcp --help </dev/null 2>&1)"
 if [[ "$MCP_HELP" != *"add"* ]]; then
     echo "file:$CONFIG_JSON"
     exit 0
@@ -66,16 +70,16 @@ fi
 # 설정은 두 군데에 있을 수 있다 — CLI 가 쓰는 ~/.claude.json 과 여기서 만드는
 # .mcp.json. 앞의 것이 우선하므로, 낡은 토큰이 담긴 CLI 항목을 남겨두면
 # 방금 갱신한 .mcp.json 이 무시되고 401 이 난다.
-claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
-claude mcp remove "$NAME" --scope local </dev/null >/dev/null 2>&1
-claude mcp remove "$NAME" --scope project </dev/null >/dev/null 2>&1
-claude mcp remove "$NAME" --scope user </dev/null >/dev/null 2>&1
+command claude mcp remove "$NAME" </dev/null >/dev/null 2>&1
+command claude mcp remove "$NAME" --scope local </dev/null >/dev/null 2>&1
+command claude mcp remove "$NAME" --scope project </dev/null >/dev/null 2>&1
+command claude mcp remove "$NAME" --scope user </dev/null >/dev/null 2>&1
 
-ADD_HELP="$(claude mcp add --help </dev/null 2>&1)"
+ADD_HELP="$(command claude mcp add --help </dev/null 2>&1)"
 registered=""
 
 if [[ "$ADD_HELP" == *"--transport"* ]]; then
-    if claude mcp add --transport http "$NAME" "$URL" \
+    if command claude mcp add --transport http "$NAME" "$URL" \
             --header "Authorization: Bearer $TOKEN" </dev/null >/dev/null 2>&1; then
         registered="transport"
     fi
@@ -90,7 +94,7 @@ print(json.dumps({
     "headers": {"Authorization": "Bearer " + sys.argv[2]},
 }))' "$URL" "$TOKEN")"
 
-    if claude mcp add-json "$NAME" "$PAYLOAD" </dev/null >/dev/null 2>&1; then
+    if command claude mcp add-json "$NAME" "$PAYLOAD" </dev/null >/dev/null 2>&1; then
         registered="add-json"
     fi
 fi
