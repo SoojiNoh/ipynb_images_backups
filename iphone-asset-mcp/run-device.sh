@@ -110,6 +110,12 @@ step "서명 확인"
 ACCOUNT_TEAMS="$(python3 tools/xcode_teams.py 2>>"$LOG")"
 ACCOUNT_STATUS=$?
 
+# 계정을 여러 개 쓰는 경우가 있다. 무료 팀이 기기 등록 한도에 걸리면 다른
+# Apple ID 로 넘어가야 하는데, 그때 이 변수로 팀을 직접 고를 수 있어야 한다.
+#
+#   ASSETBRIDGE_TEAM=XXXXXXXXXX bash go.sh
+TEAM_OVERRIDE="${ASSETBRIDGE_TEAM:-}"
+
 CONFIG_TEAM=""
 if [[ -f Config/Local.xcconfig ]]; then
     CONFIG_TEAM="$(grep -E '^ASSETBRIDGE_TEAM_ID' Config/Local.xcconfig \
@@ -118,7 +124,11 @@ fi
 
 TEAM_ID=""
 
-if (( ACCOUNT_STATUS == 0 )); then
+if [[ -n "$TEAM_OVERRIDE" ]]; then
+    TEAM_ID="$TEAM_OVERRIDE"
+    ok "팀 $TEAM_ID (ASSETBRIDGE_TEAM 으로 지정됨)"
+
+elif (( ACCOUNT_STATUS == 0 )); then
     # 설정 파일의 팀이 실제 계정에 있는 팀인지 확인한다. 예전 인증서에서 뽑아 둔
     # 값이 남아 있으면 여기서 걸린다 — 이게 'No Account for Team' 의 정체다.
     if [[ -n "$CONFIG_TEAM" ]] && printf '%s\n' "$ACCOUNT_TEAMS" | cut -f1 | grep -qx "$CONFIG_TEAM"; then
@@ -314,7 +324,25 @@ fi
 if (( BUILD_STATUS != 0 )); then
     printf '\n    %s✗%s 빌드 실패\n\n' "$RED" "$OFF"
 
-    if [[ "$BUILD_OUTPUT" == *"No Account for Team"* \
+    if [[ "$BUILD_OUTPUT" == *"maximum number of registered"* ]]; then
+        note "Apple 계정의 기기 등록 한도에 걸렸습니다. 코드나 설정 문제가 아닙니다."
+        note ""
+        note "무료 Apple ID(Personal Team)는 기기를 3대까지만 등록할 수 있고,"
+        note "등록을 지워서 자리를 비울 수 없습니다 — 1년 주기로만 초기화됩니다."
+        note ""
+        note "선택지 세 가지:"
+        note "  1. 다른 Apple ID 로 로그인 — 무료, 즉시. Xcode > Settings (⌘,) > Accounts > '+'"
+        note "  2. 유료 Apple Developer Program — 연 \$99, 기기 100대"
+        note "  3. 시뮬레이터로 계속 사용 — 이미 되고 있습니다:  bash run-simulator.sh"
+        if [[ -n "${ACCOUNT_TEAMS:-}" ]]; then
+            note ""
+            note "로그인된 팀 중에서 골라 다시 시도하려면:"
+            while IFS=$'\t' read -r tid tname _ tkind; do
+                [[ -n "$tid" ]] || continue
+                note "  ASSETBRIDGE_TEAM=$tid bash go.sh    # $tname ($tkind)"
+            done <<< "$ACCOUNT_TEAMS"
+        fi
+    elif [[ "$BUILD_OUTPUT" == *"No Account for Team"* \
             || "$BUILD_OUTPUT" == *"No profiles for"* ]]; then
         note "Xcode 에 이 팀의 Apple ID 계정이 없습니다. 인증서만으로는 안 됩니다:"
         note ""
