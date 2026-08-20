@@ -25,9 +25,20 @@ NAME="${3:-iphone}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG_JSON="$REPO_ROOT/.mcp.json"
 
+# .mcp.json 은 claude 를 **실행한 폴더**에서만 읽힌다. 사용자가 저장소 최상위에서
+# claude 를 띄우는 일이 흔하므로 거기에도 같이 써 둔다. 한쪽만 쓰면 CLI 전역 등록이
+# 실패했을 때 정작 사용자가 있는 폴더에는 아무것도 없게 된다.
+GIT_ROOT="$(cd "$REPO_ROOT" && git rev-parse --show-toplevel 2>/dev/null)"
+
+TARGETS=("$CONFIG_JSON")
+if [[ -n "$GIT_ROOT" && "$GIT_ROOT/.mcp.json" != "$CONFIG_JSON" ]]; then
+    TARGETS+=("$GIT_ROOT/.mcp.json")
+fi
+
 # --- 1. 설정 파일: 항상, 무조건 ------------------------------------------------
 
-python3 - "$NAME" "$URL" "$TOKEN" "$CONFIG_JSON" <<'PY'
+for target in "${TARGETS[@]}"; do
+python3 - "$NAME" "$URL" "$TOKEN" "$target" <<'PY'
 import json, os, sys
 name, url, token, path = sys.argv[1:5]
 
@@ -49,6 +60,7 @@ with open(path, "w") as handle:
     json.dump(config, handle, indent=2, ensure_ascii=False)
     handle.write("\n")
 PY
+done
 
 if ! command -v claude >/dev/null 2>&1; then
     echo "file:$CONFIG_JSON"
@@ -98,6 +110,50 @@ print(json.dumps({
         registered="add-json"
     fi
 fi
+
+# --- 3. 마지막 청소: ~/.claude.json 안에 남은 항목 전부 갱신 ---------------------
+
+# CLI 의 remove 는 버전마다 아는 스코프가 다르다. 모르는 스코프에 있는 항목은
+# 조용히 살아남아 방금 쓴 값을 가린다 — 그러면 401 이고, 화면만 봐서는
+# 어느 파일이 범인인지 알 수 없다. 남아 있는 'iphone' 항목을 전부 찾아
+# 같은 값으로 맞춘다. 지우지 않고 덮어쓰므로 되돌릴 것도 없다.
+python3 - "$HOME/.claude.json" "$NAME" "$URL" "$TOKEN" <<'PY'
+import json, os, sys
+
+path, name, url, token = sys.argv[1:5]
+if not os.path.exists(path):
+    raise SystemExit(0)
+
+try:
+    with open(path) as handle:
+        config = json.load(handle)
+except Exception:
+    # 읽을 수 없으면 손대지 않는다. 남의 설정을 추측으로 고치는 쪽이 더 나쁘다.
+    raise SystemExit(0)
+
+fresh = {"type": "http", "url": url, "headers": {"Authorization": f"Bearer {token}"}}
+
+def refresh(servers):
+    if isinstance(servers, dict) and name in servers:
+        servers[name] = dict(fresh)
+        return 1
+    return 0
+
+changed = refresh(config.get("mcpServers"))
+for blob in (config.get("projects") or {}).values():
+    if isinstance(blob, dict):
+        changed += refresh(blob.get("mcpServers"))
+
+if not changed:
+    raise SystemExit(0)
+
+# 원자적으로 바꾼다. 중간에 죽어도 원본이 반쪽짜리로 남지 않는다.
+temp = path + ".assetbridge.tmp"
+with open(temp, "w") as handle:
+    json.dump(config, handle, indent=2, ensure_ascii=False)
+    handle.write("\n")
+os.replace(temp, path)
+PY
 
 if [[ -n "$registered" ]]; then
     echo "both:$CONFIG_JSON"

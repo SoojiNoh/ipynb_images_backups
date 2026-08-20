@@ -40,6 +40,11 @@ else
             info "로컬에서 고친 파일이 막고 있습니다. 버려도 되면:"
             info ""
             info "    git -C .. checkout -- iphone-asset-mcp && bash go.sh"
+        elif [[ "$PULL_OUTPUT" == *"untracked working tree files"* ]]; then
+            info "추적되지 않는 파일이 같은 이름으로 이미 있습니다."
+            info "위 목록에 나온 파일을 지운 뒤 다시 실행하세요. 예:"
+            info ""
+            info "    rm -f ../.gitignore && bash go.sh"
         elif [[ "$PULL_OUTPUT" == *"diverge"* || "$PULL_OUTPUT" == *"non-fast-forward"* ]]; then
             info "로컬 커밋이 갈라졌습니다. 원격 것으로 맞추려면:"
             info ""

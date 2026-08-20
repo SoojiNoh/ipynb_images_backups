@@ -185,6 +185,14 @@ if ! ensure_booted; then
         "시뮬레이터 창을 닫지 말고 다시 실행해 주세요."
 fi
 
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist" 2>/dev/null)"
+[[ -n "$BUNDLE_ID" ]] || die "번들 ID 를 읽지 못했습니다."
+
+# 이미 떠 있는 앱에 simctl launch 를 걸면 다시 뜨지 않고 앞으로 나오기만 한다.
+# 그러면 방금 설치한 새 바이너리는 실행되지 않고, 예전 프로세스가 예전 토큰을
+# 쥔 채 계속 포트를 붙들고 있는다. 설치 전에 확실히 죽인다.
+xcrun simctl terminate "$UDID" "$BUNDLE_ID" >>"$LOG" 2>&1
+
 if ! xcrun simctl install "$UDID" "$APP_PATH" 2>>"$LOG"; then
     warn "설치 실패 — 부팅 상태를 다시 맞추고 한 번 더 시도합니다."
     ensure_booted
@@ -193,8 +201,17 @@ if ! xcrun simctl install "$UDID" "$APP_PATH" 2>>"$LOG"; then
     fi
 fi
 
-BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist" 2>/dev/null)"
-[[ -n "$BUNDLE_ID" ]] || die "번들 ID 를 읽지 못했습니다."
+CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>>"$LOG")"
+[[ -n "$CONTAINER" ]] || die "앱 컨테이너 경로를 읽지 못했습니다." "번들 ID: $BUNDLE_ID"
+CONNECTION="$CONTAINER/Library/Application Support/connection.json"
+
+# 띄우기 전에 예전 접속 정보를 지운다.
+#
+# simctl install 은 데이터 컨테이너를 건드리지 않으므로 지난 실행이 남긴
+# connection.json 이 그대로 남아 있다. 그걸 두고 "파일이 생겼나" 를 기다리면
+# 첫 바퀴에 통과해 **예전 토큰**을 읽는다. 토큰이 한 번이라도 바뀌었으면
+# 그 길로 401 이다. 지우고 다시 생기기를 기다려야 이번 실행의 값이 확실하다.
+rm -f "$CONNECTION"
 
 if ! xcrun simctl launch "$UDID" "$BUNDLE_ID" >>"$LOG" 2>&1; then
     die "앱을 실행하지 못했습니다." "번들 ID: $BUNDLE_ID"
@@ -206,51 +223,129 @@ ok "$BUNDLE_ID 실행됨"
 
 step "Claude Code 에 등록"
 
-# 시뮬레이터에서 실행된 앱은 컨테이너에 접속 정보를 남긴다. 그 컨테이너는
-# Mac 디스크에 있으므로 여기서 읽어 그대로 등록할 수 있다.
-# 사람이 토큰을 화면에서 옮겨 적을 이유가 없다.
-CONTAINER="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>>"$LOG")"
-CONNECTION="$CONTAINER/Library/Application Support/connection.json"
-
-for _ in $(seq 1 20); do
-    [[ -f "$CONNECTION" ]] && break
+# 앱은 뜨자마자 컨테이너에 접속 정보를 남긴다. 그 컨테이너는 Mac 디스크에 있으므로
+# 여기서 읽어 그대로 등록할 수 있다. 사람이 토큰을 화면에서 옮겨 적을 이유가 없다.
+for _ in $(seq 1 40); do
+    [[ -s "$CONNECTION" ]] && break
     sleep 0.5
 done
 
-if [[ ! -f "$CONNECTION" ]]; then
-    warn "앱이 아직 접속 정보를 쓰지 않았습니다."
-    note "앱이 뜬 뒤 이 스크립트를 다시 실행하면 자동으로 등록됩니다."
-else
-    MCP_URL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["url"])' "$CONNECTION" 2>>"$LOG")"
-    MCP_TOKEN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$CONNECTION" 2>>"$LOG")"
-    ok "토큰 $MCP_TOKEN"
+[[ -s "$CONNECTION" ]] || die "앱이 접속 정보를 쓰지 않았습니다." \
+    "시뮬레이터 창에 AssetBridge 가 떠 있는지 확인하고 다시 실행해 주세요."
 
-    # 등록은 헬퍼가 맡는다. 항상 .mcp.json 을 쓰고, CLI 가 확실히 지원할 때만
-    # 전역 등록까지 한다. 지원 확인 없이 claude 를 부르면 대화 세션이 떠 버린다.
-    RESULT="$(bash tools/register_mcp.sh "$MCP_URL" "$MCP_TOKEN" iphone 2>>"$LOG")"
+json_field() {
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$1" "$2" 2>>"$LOG"
+}
 
-    case "$RESULT" in
-        both:*)
-            ok "'iphone' 으로 등록 완료 — 어느 폴더에서 claude 를 띄워도 붙습니다"
-            note "해제하려면: claude mcp remove iphone"
-            ;;
-        file:*)
-            ok "설정 파일에 기록: ${RESULT#file:}"
-            note "이 claude CLI 는 등록 명령을 지원하지 않아 .mcp.json 으로 붙입니다."
-            note "반드시 이 폴더에서 claude 를 실행하세요:"
-            note "  cd $PWD && claude"
-            ;;
-        *)
-            warn "등록 결과를 확인하지 못했습니다. 로그를 보세요."
-            ;;
-    esac
+MCP_URL="$(json_field "$CONNECTION" url)"
+MCP_TOKEN="$(json_field "$CONNECTION" token)"
+
+[[ -n "$MCP_URL" && -n "$MCP_TOKEN" ]] || die "접속 정보를 읽지 못했습니다." "파일: $CONNECTION"
+
+# 등록하기 전에 이 토큰이 진짜 통하는지 확인한다.
+#
+# 통하지 않는 값을 설정에 써 두면 Claude Code 는 401 만 반복하고, 원인이 앱인지
+# 설정인지 화면만 봐서는 구분할 수 없다. 여기서 한 번 찔러 보면 그 구분이 끝난다.
+PROBE_BODY="${TMPDIR:-/tmp}/assetbridge-probe.json"
+PROBE_CODE=""
+
+for _ in $(seq 1 20); do
+    PROBE_CODE="$(curl -sS -m 5 -o "$PROBE_BODY" -w '%{http_code}' \
+        -X POST "$MCP_URL" \
+        -H 'Content-Type: application/json' \
+        -H 'Accept: application/json, text/event-stream' \
+        -H "Authorization: Bearer $MCP_TOKEN" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>>"$LOG")"
+    [[ "$PROBE_CODE" == "200" ]] && break
+    sleep 0.5
+done
+
+if [[ "$PROBE_CODE" != "200" ]]; then
+    {
+        printf '\n--- 진단 ---\n'
+        printf 'URL:         %s\n' "$MCP_URL"
+        printf '앱 토큰:      %s\n' "$MCP_TOKEN"
+        printf 'HTTP:        %s\n' "${PROBE_CODE:-응답 없음}"
+        printf '응답 본문:    '; cat "$PROBE_BODY" 2>/dev/null; printf '\n'
+        python3 - "$HOME/.claude.json" "$PWD/.mcp.json" "$(git rev-parse --show-toplevel 2>/dev/null)/.mcp.json" iphone <<'PY'
+import json, os, sys
+
+home, project, root, name = sys.argv[1:5]
+
+def token_of(entry):
+    header = ((entry or {}).get("headers") or {}).get("Authorization", "")
+    return header.replace("Bearer ", "").strip() or "(헤더 없음)"
+
+def report(label, path, finder):
+    if not path or not os.path.exists(path):
+        print(f"{label}: 파일 없음")
+        return
+    try:
+        data = json.load(open(path))
+    except Exception as exc:
+        print(f"{label}: 읽기 실패 — {exc}")
+        return
+    hits = finder(data)
+    if not hits:
+        print(f"{label}: '{name}' 항목 없음")
+    for where, entry in hits:
+        print(f"{label} [{where}]: {token_of(entry)}   url={entry.get('url', '')}")
+
+def flat(data):
+    entry = (data.get("mcpServers") or {}).get(name)
+    return [("mcpServers", entry)] if entry else []
+
+def nested(data):
+    hits = flat(data)
+    for path, blob in (data.get("projects") or {}).items():
+        entry = ((blob or {}).get("mcpServers") or {}).get(name)
+        if entry:
+            hits.append((path, entry))
+    return hits
+
+report("~/.claude.json", home, nested)
+report("프로젝트 .mcp.json", project, flat)
+if root != project:
+    report("저장소 .mcp.json", root, flat)
+PY
+    } 2>&1 | tee -a "$LOG"
+
+    if [[ "$PROBE_CODE" == "000" || -z "$PROBE_CODE" ]]; then
+        die "서버가 응답하지 않습니다 ($MCP_URL)." \
+            "시뮬레이터의 AssetBridge 화면에서 '시작' 버튼이 초록불인지 확인해 주세요."
+    fi
+    die "앱이 알려준 토큰을 앱 자신이 거부했습니다 (HTTP $PROBE_CODE)." \
+        "위 진단 내용이 클립보드에 들어 있습니다. 그대로 붙여넣어 주세요."
 fi
+
+ok "토큰 $MCP_TOKEN — 서버가 실제로 받아들였습니다"
+
+# 등록은 헬퍼가 맡는다. 항상 .mcp.json 을 쓰고, CLI 가 확실히 지원할 때만
+# 전역 등록까지 한다. 지원 확인 없이 claude 를 부르면 대화 세션이 떠 버린다.
+RESULT="$(bash tools/register_mcp.sh "$MCP_URL" "$MCP_TOKEN" iphone 2>>"$LOG")"
+
+case "$RESULT" in
+    both:*)
+        ok "'iphone' 으로 등록 완료 — 어느 폴더에서 claude 를 띄워도 붙습니다"
+        note "해제하려면: claude mcp remove iphone"
+        ;;
+    file:*)
+        ok "설정 파일에 기록: ${RESULT#file:}"
+        note "이 claude CLI 는 등록 명령을 지원하지 않아 .mcp.json 으로 붙습니다."
+        ;;
+    *)
+        warn "등록 결과를 확인하지 못했습니다. 로그를 보세요."
+        ;;
+esac
 
 cat <<EOF
 
 ${BOLD}다음 단계${OFF}
-  1. 시뮬레이터 창의 AssetBridge 에서 ${BOLD}권한 요청${OFF} → 시트 허용 → ${BOLD}시작${OFF}
-  2. 터미널에서 ${BOLD}claude${OFF} 실행 → ${BOLD}/mcp${OFF} 로 'iphone' 이 붙었는지 확인
+  1. 열려 있는 claude 세션이 있으면 ${BOLD}종료했다가 다시${OFF} 실행하세요.
+     설정은 세션이 뜰 때 한 번만 읽힙니다. 켜 둔 채로는 예전 토큰을 계속 씁니다.
+  2. ${BOLD}/mcp${OFF} 로 'iphone' 확인 — 토큰은 위에서 이미 서버에 통과시켜 봤습니다.
+  3. 시뮬레이터의 AssetBridge 에서 ${BOLD}권한 요청${OFF} → 시트 허용.
+     서버는 앱이 뜨는 즉시 켜지므로 '시작' 버튼은 누를 필요 없습니다.
 
   ${BOLD}시험해 볼 것${OFF} — 사진은 넣어 두었습니다.
      "내 아이폰 사진 몇 장인지 알려줘"    → photos_stats
