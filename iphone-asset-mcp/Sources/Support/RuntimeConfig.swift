@@ -16,6 +16,7 @@ final class RuntimeConfig {
         static let enabledDomains = "server.enabledDomains"
         static let keepAwake = "server.keepAwake"
         static let backgroundAudio = "server.backgroundAudio"
+        static let autoStart = "server.autoStart"
     }
 
     private var _token: String
@@ -25,6 +26,7 @@ final class RuntimeConfig {
     private var _enabledDomains: Set<String>
     private var _keepAwake: Bool
     private var _backgroundAudio: Bool
+    private var _autoStart: Bool
 
     private init() {
         // 예전 43자 base64 토큰을 쓰던 설치본은 조용히 짧은 형식으로 옮긴다.
@@ -41,7 +43,8 @@ final class RuntimeConfig {
             Key.lanOnly: true,
             Key.allowWrites: true,
             Key.keepAwake: true,
-            Key.backgroundAudio: false
+            Key.backgroundAudio: false,
+            Key.autoStart: true
         ])
 
         _port = defaults.integer(forKey: Key.port)
@@ -49,6 +52,7 @@ final class RuntimeConfig {
         _allowWrites = defaults.bool(forKey: Key.allowWrites)
         _keepAwake = defaults.bool(forKey: Key.keepAwake)
         _backgroundAudio = defaults.bool(forKey: Key.backgroundAudio)
+        _autoStart = defaults.bool(forKey: Key.autoStart)
 
         if let saved = defaults.stringArray(forKey: Key.enabledDomains) {
             _enabledDomains = Set(saved)
@@ -111,6 +115,15 @@ final class RuntimeConfig {
         set {
             lock.lock(); _backgroundAudio = newValue; lock.unlock()
             defaults.set(newValue, forKey: Key.backgroundAudio)
+        }
+    }
+
+    /// 앱을 켜면 서버도 같이 켠다. 서버가 존재 이유인 앱이므로 기본값은 켜짐.
+    var autoStart: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _autoStart }
+        set {
+            lock.lock(); _autoStart = newValue; lock.unlock()
+            defaults.set(newValue, forKey: Key.autoStart)
         }
     }
 

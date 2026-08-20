@@ -45,6 +45,7 @@ final class AppState: ObservableObject {
     @Published var allowWrites: Bool { didSet { config.allowWrites = allowWrites; refreshToolCount() } }
     @Published var keepAwake: Bool { didSet { config.keepAwake = keepAwake; applyIdleTimer() } }
     @Published var backgroundAudio: Bool { didSet { config.backgroundAudio = backgroundAudio; applyBackgroundAudio() } }
+    @Published var autoStart: Bool { didSet { config.autoStart = autoStart } }
     @Published var enabledDomains: Set<String> {
         didSet {
             for domain in ToolDomain.allCases {
@@ -86,6 +87,7 @@ final class AppState: ObservableObject {
         allowWrites = configuration.allowWrites
         keepAwake = configuration.keepAwake
         backgroundAudio = configuration.backgroundAudio
+        autoStart = configuration.autoStart
         enabledDomains = configuration.enabledDomains
 
         wireServer()
@@ -94,6 +96,10 @@ final class AppState: ObservableObject {
         refreshPermissions()
         refreshFileRoots()
         writeConnectionFile()
+
+        // 서버가 이 앱의 존재 이유다. 켤 때마다 버튼을 한 번 더 누르게 하면
+        // 잊어버리기 쉽고, 그러면 클라이언트는 ConnectionRefused 만 본다.
+        if autoStart { start() }
     }
 
     /// 시뮬레이터에서만, 접속 정보를 앱 컨테이너에 남긴다.
@@ -213,7 +219,9 @@ final class AppState: ObservableObject {
             "url": endpointURL,
             "headers": ["Authorization": "Bearer \(token)"]
         ] as [String: Any], pretty: false)
-        return "claude mcp add-json iphone '\(payload)'"
+        // `command` 를 앞에 붙인다. 사용자 셸에서 claude 가 함수나 별칭으로
+        // 래핑돼 있으면 하위 명령이 프롬프트로 넘어가 새 세션이 떠 버린다.
+        return "command claude mcp add-json iphone '\(payload)'"
     }
 
     /// claude CLI 의 하위 명령에 전혀 의존하지 않는 최후의 수단.

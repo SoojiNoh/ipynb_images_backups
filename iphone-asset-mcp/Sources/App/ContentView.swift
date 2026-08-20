@@ -238,6 +238,7 @@ struct ContentView: View {
             }
             .disabled(state.isRunning)
 
+            Toggle("앱 켤 때 서버 자동 시작", isOn: $state.autoStart)
             Toggle("쓰기 도구 허용", isOn: $state.allowWrites)
             Toggle("사설망에서만 접속 허용", isOn: $state.lanOnly)
             Toggle("화면 꺼짐 방지", isOn: $state.keepAwake)
