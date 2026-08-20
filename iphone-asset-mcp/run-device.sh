@@ -100,31 +100,82 @@ fi
 
 step "서명 확인"
 
-TEAM_ID=""
+# 서명 가능 여부는 키체인 인증서가 아니라 **Xcode 에 로그인된 계정**으로 판단한다.
+# 인증서는 계정을 지운 뒤에도 키체인에 남는다. 그 상태로 빌드를 걸면 2분을 태우고
+# 나서야 xcodebuild 가 이렇게 말한다:
+#
+#     error: No Account for Team "XXXXXXXXXX".
+#
+# 계정 목록은 2초면 읽을 수 있으므로, 그걸 먼저 본다.
+ACCOUNT_TEAMS="$(python3 tools/xcode_teams.py 2>>"$LOG")"
+ACCOUNT_STATUS=$?
+
+CONFIG_TEAM=""
 if [[ -f Config/Local.xcconfig ]]; then
-    TEAM_ID="$(grep -E '^ASSETBRIDGE_TEAM_ID' Config/Local.xcconfig | sed -E 's/.*=[[:space:]]*//' | tr -d '[:space:]')"
+    CONFIG_TEAM="$(grep -E '^ASSETBRIDGE_TEAM_ID' Config/Local.xcconfig \
+        | sed -E 's/.*=[[:space:]]*//' | tr -d '[:space:]')"
 fi
 
-if [[ -z "$TEAM_ID" ]]; then
-    # setup.sh 를 안 돌렸거나, 돌렸을 때 아직 인증서가 없었던 경우.
-    TEAM_ID="$(security find-identity -v -p codesigning 2>/dev/null \
-        | grep -oE '\([A-Z0-9]{10}\)' | tr -d '()' | head -1)"
-fi
+TEAM_ID=""
 
-if [[ -z "$TEAM_ID" ]]; then
-    die "개발자 팀을 찾지 못했습니다. 실기기 설치에는 반드시 필요합니다." \
-        "이 부분은 본인 Apple ID 라 자동화할 수 없습니다:" \
+if (( ACCOUNT_STATUS == 1 )); then
+    die "Xcode 에 Apple ID 계정이 없습니다." \
+        "키체인에 인증서가 남아 있어도, 계정이 없으면 프로비저닝 프로파일을" \
+        "만들 수 없어 실기기 설치가 불가능합니다." \
+        "" \
+        "본인 Apple ID 라 이 단계만은 자동화할 수 없습니다:" \
         "" \
         "  1. Xcode 를 연다" \
-        "  2. Xcode > Settings (⌘,) > Accounts > 왼쪽 아래 '+' > Apple ID" \
-        "  3. 로그인" \
-        "  4. 터미널에서  bash setup.sh  를 다시 실행" \
-        "  5. 그다음 이 스크립트를 다시 실행" \
+        "  2. Xcode > Settings (⌘,) > Accounts" \
+        "  3. 왼쪽 아래 '+' > Apple ID > 로그인" \
+        "  4. 터미널에서 이 명령을 다시 실행" \
         "" \
         "무료 Apple ID 로도 됩니다. 대신 7일마다 재설치해야 합니다."
-fi
 
-ok "팀 ID $TEAM_ID"
+elif (( ACCOUNT_STATUS == 0 )); then
+    # 설정 파일에 적힌 팀이 실제 계정에 있는 팀인지 확인한다. 예전 인증서에서
+    # 뽑아 둔 값이 그대로 남아 있으면 여기서 걸린다.
+    if [[ -n "$CONFIG_TEAM" ]] && printf '%s\n' "$ACCOUNT_TEAMS" | cut -f1 | grep -qx "$CONFIG_TEAM"; then
+        TEAM_ID="$CONFIG_TEAM"
+    else
+        TEAM_ID="$(printf '%s\n' "$ACCOUNT_TEAMS" | head -1 | cut -f1)"
+        if [[ "$CONFIG_TEAM" != "$TEAM_ID" ]]; then
+            if [[ -n "$CONFIG_TEAM" ]]; then
+                warn "설정 파일의 팀 $CONFIG_TEAM 은 로그인된 계정에 없습니다. $TEAM_ID 로 바꿉니다."
+            fi
+            # 생성 파일이므로 그 자리에서 고친다. 그래야 Xcode 로 직접 열었을 때도 맞다.
+            # sed -i 는 macOS 와 GNU 의 문법이 달라 조용히 어긋난다. python 으로 쓴다.
+            if ! python3 -c '
+import re, sys
+path, team = sys.argv[1:3]
+with open(path) as handle:
+    text = handle.read()
+text, count = re.subn(r"(?m)^ASSETBRIDGE_TEAM_ID.*$", "ASSETBRIDGE_TEAM_ID = " + team, text)
+if not count:
+    text = text.rstrip("\n") + "\nASSETBRIDGE_TEAM_ID = " + team + "\n"
+with open(path, "w") as handle:
+    handle.write(text)
+' Config/Local.xcconfig "$TEAM_ID" 2>>"$LOG"; then
+                warn "Config/Local.xcconfig 를 고치지 못했습니다. 빌드는 그대로 진행합니다."
+            fi
+        fi
+    fi
+
+    TEAM_LABEL="$(printf '%s\n' "$ACCOUNT_TEAMS" | grep "^$TEAM_ID" | head -1 | cut -f2,3,4 | tr '\t' ' ')"
+    ok "팀 $TEAM_ID${TEAM_LABEL:+  ($TEAM_LABEL)}"
+
+else
+    # 계정 목록을 읽지 못한 경우. 못 읽은 것을 '없다' 로 다루지 않는다.
+    warn "Xcode 계정 목록을 확인하지 못했습니다. 예전 방식으로 팀을 찾습니다."
+    TEAM_ID="$CONFIG_TEAM"
+    if [[ -z "$TEAM_ID" ]]; then
+        TEAM_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+            | grep -oE '\([A-Z0-9]{10}\)' | tr -d '()' | head -1)"
+    fi
+    [[ -n "$TEAM_ID" ]] || die "개발자 팀을 찾지 못했습니다." \
+        "Xcode > Settings (⌘,) > Accounts 에서 Apple ID 로 로그인한 뒤 다시 실행하세요."
+    ok "팀 ID $TEAM_ID"
+fi
 
 # --- 3. 기기 준비 상태 --------------------------------------------------------
 
@@ -262,7 +313,14 @@ fi
 if (( BUILD_STATUS != 0 )); then
     printf '\n    %s✗%s 빌드 실패\n\n' "$RED" "$OFF"
 
-    if [[ "$BUILD_OUTPUT" == *"requires a development team"* ]]; then
+    if [[ "$BUILD_OUTPUT" == *"No Account for Team"* \
+            || "$BUILD_OUTPUT" == *"No profiles for"* ]]; then
+        note "Xcode 에 이 팀의 Apple ID 계정이 없습니다. 인증서만으로는 안 됩니다:"
+        note ""
+        note "  Xcode > Settings (⌘,) > Accounts > 왼쪽 아래 '+' > Apple ID > 로그인"
+        note ""
+        note "로그인 뒤 이 명령을 다시 실행하면 프로파일은 자동으로 만들어집니다."
+    elif [[ "$BUILD_OUTPUT" == *"requires a development team"* ]]; then
         note "서명 설정이 아직 안 붙었습니다. Xcode 에서 AssetBridge 타겟 >"
         note "Signing & Capabilities > Team 을 직접 골라 주세요."
     elif [[ "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* ]]; then

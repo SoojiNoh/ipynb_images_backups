@@ -144,18 +144,34 @@ note "$ACTIVE_DEVELOPER_DIR"
 
 step "서명 설정"
 
-# "Apple Development: 이름 (XXXXXXXXXX)" 형태에서 팀 ID 를 뽑는다.
-TEAM_ID="$(security find-identity -v -p codesigning 2>/dev/null \
-    | grep -oE '\([A-Z0-9]{10}\)' \
-    | tr -d '()' \
-    | head -1)"
+# 팀 ID 는 Xcode 에 로그인된 계정에서 가져온다. 키체인 인증서는 계정을 지운
+# 뒤에도 남아서, 그걸 믿으면 실기기 빌드가 "No Account for Team" 으로 죽는다.
+ACCOUNT_TEAMS="$(python3 tools/xcode_teams.py 2>/dev/null)"
+ACCOUNT_STATUS=$?
+TEAM_ID=""
 
-if [[ -z "$TEAM_ID" ]]; then
-    warn "키체인에서 개발자 인증서를 찾지 못했습니다."
-    note "Xcode > Settings > Accounts 에서 Apple ID 로 로그인하면 자동으로 만들어집니다."
-    note "지금은 그냥 진행합니다. Xcode 에서 Team 을 직접 골라도 됩니다."
+if (( ACCOUNT_STATUS == 0 )); then
+    TEAM_ID="$(printf '%s\n' "$ACCOUNT_TEAMS" | head -1 | cut -f1)"
+    TEAM_LABEL="$(printf '%s\n' "$ACCOUNT_TEAMS" | head -1 | cut -f2,3 | tr '\t' ' ')"
+    ok "팀 $TEAM_ID${TEAM_LABEL:+  ($TEAM_LABEL)}"
 else
-    ok "팀 ID $TEAM_ID"
+    if (( ACCOUNT_STATUS == 1 )); then
+        warn "Xcode 에 Apple ID 계정이 없습니다. 실기기 설치에는 반드시 필요합니다."
+        note "Xcode > Settings (⌘,) > Accounts > 왼쪽 아래 '+' > Apple ID 로 로그인하세요."
+    else
+        warn "Xcode 계정 목록을 확인하지 못했습니다. 키체인 인증서로 대신 찾습니다."
+    fi
+
+    # "Apple Development: 이름 (XXXXXXXXXX)" 형태에서 팀 ID 를 뽑는다.
+    TEAM_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+        | grep -oE '\([A-Z0-9]{10}\)' \
+        | tr -d '()' \
+        | head -1)"
+
+    if [[ -n "$TEAM_ID" ]]; then
+        note "키체인 인증서의 팀 $TEAM_ID 를 적어 둡니다 (계정이 없으면 이것만으로는 부족합니다)."
+    fi
+    note "시뮬레이터로 돌리는 데에는 서명이 필요 없으므로 그대로 진행합니다."
 fi
 
 # 번들 ID 는 전 세계에서 고유해야 하므로 macOS 계정명을 섞는다.
