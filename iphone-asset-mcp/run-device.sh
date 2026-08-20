@@ -126,21 +126,157 @@ fi
 
 ok "팀 ID $TEAM_ID"
 
-# --- 3. 빌드 ----------------------------------------------------------------
+# --- 3. 기기 준비 상태 --------------------------------------------------------
+
+step "기기 준비 상태"
+
+# devicectl 이 보고하는 기기 속성 하나를 읽는다. 못 읽으면 빈 문자열.
+device_flag() {
+    xcrun devicectl list devices --json-output "$DEVICE_JSON" >>"$LOG" 2>&1
+    python3 - "$DEVICE_JSON" "$DEVICE_ID" "$1" <<'PY'
+import json, sys
+
+path, identifier, field = sys.argv[1:4]
+try:
+    with open(path) as handle:
+        payload = json.load(handle)
+except Exception:
+    raise SystemExit(0)
+
+for device in payload.get("result", {}).get("devices", []):
+    if device.get("identifier") != identifier:
+        continue
+    value = (device.get("deviceProperties") or {}).get(field)
+    if isinstance(value, bool):
+        print("true" if value else "false")
+    elif value is not None:
+        print(value)
+    break
+PY
+}
+
+DEV_MODE="$(device_flag developerModeStatus)"
+case "$DEV_MODE" in
+    enabled)
+        ok "개발자 모드 켜짐"
+        ;;
+    "")
+        warn "개발자 모드 상태를 읽지 못했습니다. 그대로 진행합니다."
+        ;;
+    *)
+        die "iPhone 의 개발자 모드가 꺼져 있습니다 (상태: $DEV_MODE)." \
+            "iOS 16 부터는 이게 꺼져 있으면 어떤 방법으로도 앱을 설치할 수 없습니다." \
+            "기기에서 직접 켜야 합니다 — Mac 에서는 켤 수 없습니다:" \
+            "" \
+            "  설정 > 개인정보 보호 및 보안 > 개발자 모드 > 켬" \
+            "  재시동을 묻습니다. 재시동 뒤 잠금을 풀면 확인 창이 한 번 더 뜹니다." \
+            "" \
+            "그다음 이 명령을 다시 실행하세요."
+        ;;
+esac
+
+# DDI(개발자 디스크 이미지)가 기기에 올라가야 xcodebuild 가 이 기기를 목적지로
+# 인정한다. devicectl 의 State 열에 'connected (no DDI)' 라고 나오는 그 단계다.
+#
+# 처음 연결했거나 iOS·Xcode 를 올린 직후에는 준비에 몇 분이 걸리고, 그동안 빌드를
+# 걸면 "Device is busy (Waiting to reconnect...)" 로 죽는다. 기다렸다 진행한다.
+# devicectl 의 사람이 읽는 출력에서 이 기기 줄의 State 를 본다.
+# 'connected (no DDI)' 는 실제로 화면에 찍히는 문자열이라, JSON 필드 이름보다
+# Xcode 버전 사이에서 덜 흔들린다. JSON 은 보조로만 쓴다.
+#
+# 0 = 준비됨, 1 = 아직, 2 = 알 수 없음
+ddi_ready() {
+    local text json
+    text="$(xcrun devicectl list devices 2>>"$LOG" | grep -F "$DEVICE_ID")"
+    if [[ -n "$text" ]]; then
+        [[ "$text" == *"no DDI"* ]] && return 1
+        [[ "$text" == *"connected"* ]] && return 0
+    fi
+
+    json="$(device_flag ddiServicesAvailable)"
+    [[ "$json" == "true" ]] && return 0
+    [[ "$json" == "false" ]] && return 1
+    return 2
+}
+
+ddi_ready
+DDI_STATE=$?
+
+if (( DDI_STATE == 0 )); then
+    ok "기기 준비 완료"
+elif (( DDI_STATE == 2 )); then
+    warn "기기 준비 상태를 읽지 못했습니다. 그대로 진행합니다."
+else
+    printf '    기기를 준비하는 중입니다(DDI 마운트). 최대 5분 기다립니다'
+
+    # 연결을 한 번 건드려 준비를 앞당긴다. 준비 중에는 이 명령 자체가 오래
+    # 걸릴 수 있으므로 뒤에서 돌리고, 끝나면 정리한다.
+    ( xcrun devicectl device info details --device "$DEVICE_ID" >>"$LOG" 2>&1 ) &
+    NUDGE_PID=$!
+
+    for _ in $(seq 1 60); do
+        sleep 5
+        printf '.'
+        ddi_ready
+        DDI_STATE=$?
+        (( DDI_STATE == 1 )) || break
+    done
+    printf '\n'
+
+    kill "$NUDGE_PID" 2>/dev/null
+    wait "$NUDGE_PID" 2>/dev/null
+
+    if (( DDI_STATE == 1 )); then
+        die "기기가 아직 개발용으로 준비되지 않았습니다 (DDI 미마운트)." \
+            "devicectl 이 계속 'connected (no DDI)' 로 보고합니다. 이 상태에서는" \
+            "xcodebuild 가 iPhone 을 빌드 대상으로 인정하지 않습니다." \
+            "" \
+            "기기에서 확인할 것 — 어느 것도 Mac 에서 대신 할 수 없습니다:" \
+            "  1. iPhone 잠금을 풀고, 준비가 끝날 때까지 잠기지 않게 두세요" \
+            "  2. 설정 > 개인정보 보호 및 보안 > 개발자 모드 가 켜져 있는지" \
+            "  3. 케이블을 뽑았다 다시 꽂고 '이 컴퓨터를 신뢰' 를 누르세요" \
+            "" \
+            "Xcode > Window > Devices and Simulators 를 열어 두면 'Preparing" \
+            "device for development' 진행 상황이 보입니다. 끝난 뒤 다시 실행하세요."
+    fi
+
+    ok "기기 준비 완료"
+fi
+
+# --- 4. 빌드 ----------------------------------------------------------------
 
 step "빌드 및 서명 (처음에는 1~2분 걸립니다)"
 
-BUILD_OUTPUT="$(xcodebuild \
-    -project AssetBridge.xcodeproj \
-    -scheme AssetBridge \
-    -configuration Debug \
-    -destination "id=$DEVICE_UDID" \
-    -derivedDataPath build \
-    -allowProvisioningUpdates \
-    DEVELOPMENT_TEAM="$TEAM_ID" \
-    build 2>&1)"
+# -destination-timeout 을 늘린다. 기본값은 짧아서, 기기가 잠깐 재연결되는 사이에
+# "Timed out waiting for all destinations" 로 죽는다. 실제로 흔한 실패다.
+run_build() {
+    xcodebuild \
+        -project AssetBridge.xcodeproj \
+        -scheme AssetBridge \
+        -configuration Debug \
+        -destination "id=$DEVICE_UDID" \
+        -destination-timeout 180 \
+        -derivedDataPath build \
+        -allowProvisioningUpdates \
+        DEVELOPMENT_TEAM="$TEAM_ID" \
+        build 2>&1
+}
+
+BUILD_OUTPUT="$(run_build)"
 BUILD_STATUS=$?
 printf '%s\n' "$BUILD_OUTPUT" >> "$LOG"
+
+# 기기가 잠깐 자리를 비운 것뿐이라면 한 번 더 해 본다. 컴파일 결과는 이미
+# derivedData 에 남아 있으므로 재시도는 훨씬 빠르다.
+if (( BUILD_STATUS != 0 )) && [[ "$BUILD_OUTPUT" == *"Device is busy"* \
+        || "$BUILD_OUTPUT" == *"Timed out waiting for all destinations"* \
+        || "$BUILD_OUTPUT" == *"Waiting to reconnect"* ]]; then
+    warn "기기가 재연결 중이라 빌드가 밀렸습니다. 30초 뒤 한 번 더 시도합니다."
+    sleep 30
+    BUILD_OUTPUT="$(run_build)"
+    BUILD_STATUS=$?
+    printf '%s\n' "$BUILD_OUTPUT" >> "$LOG"
+fi
 
 if (( BUILD_STATUS != 0 )); then
     printf '\n    %s✗%s 빌드 실패\n\n' "$RED" "$OFF"
@@ -151,6 +287,17 @@ if (( BUILD_STATUS != 0 )); then
     elif [[ "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* ]]; then
         note "번들 ID 가 이미 다른 계정에 등록되어 있습니다."
         note "Config/Local.xcconfig 의 ASSETBRIDGE_BUNDLE_ID 를 다른 값으로 바꾸세요."
+    elif [[ "$BUILD_OUTPUT" == *"Device is busy"* \
+            || "$BUILD_OUTPUT" == *"Timed out waiting for all destinations"* \
+            || "$BUILD_OUTPUT" == *"Ineligible destinations"* ]]; then
+        note "iPhone 이 빌드 대상으로 인정되지 않는 상태입니다. 기기 쪽 문제입니다:"
+        note ""
+        note "  - iPhone 잠금을 풀고, 빌드가 끝날 때까지 잠기지 않게 두세요"
+        note "  - 설정 > 개인정보 보호 및 보안 > 개발자 모드 가 켜져 있는지 확인"
+        note "  - 케이블을 뽑았다 다시 꽂고 '이 컴퓨터를 신뢰' 를 누르세요"
+        note ""
+        note "Xcode > Window > Devices and Simulators 에서 'Preparing device for"
+        note "development' 가 끝났는지 볼 수 있습니다. 끝난 뒤 다시 실행하세요."
     elif [[ "$BUILD_OUTPUT" == *"Unable to find a destination"* ]]; then
         note "기기를 찾지 못했습니다. iPhone 잠금을 풀고 다시 실행하세요."
     fi
@@ -171,7 +318,7 @@ APP_PATH="build/Build/Products/Debug-iphoneos/AssetBridge.app"
 
 ok "빌드 성공"
 
-# --- 4. 설치 ----------------------------------------------------------------
+# --- 5. 설치 ----------------------------------------------------------------
 
 step "iPhone 에 설치"
 
@@ -185,7 +332,7 @@ BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/In
 
 ok "$BUNDLE_ID"
 
-# --- 5. 실행 ----------------------------------------------------------------
+# --- 6. 실행 ----------------------------------------------------------------
 
 step "실행"
 
