@@ -50,7 +50,16 @@ if os.path.exists(path):
     except Exception:
         config = {}
 
-config.setdefault("mcpServers", {})[name] = {
+servers = config.setdefault("mcpServers", {})
+
+# 예전 버전이 남긴 쓰레기 항목을 걷어낸다. 이름이 비었거나 주소가 없는 항목이
+# 하나라도 있으면 Claude Code 가 설정 전체를 못 읽을 수 있고, 그러면 방금 쓴
+# 정상 항목까지 같이 무시된다. 남의 서버는 건드리지 않는다 — 망가진 것만 뺀다.
+for key in [k for k, v in servers.items()
+            if not k.strip() or not isinstance(v, dict) or not v.get("url")]:
+    del servers[key]
+
+servers[name] = {
     "type": "http",
     "url": url,
     "headers": {"Authorization": f"Bearer {token}"},
