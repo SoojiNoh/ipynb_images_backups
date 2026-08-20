@@ -100,13 +100,13 @@ fi
 
 step "서명 확인"
 
-# 서명 가능 여부는 키체인 인증서가 아니라 **Xcode 에 로그인된 계정**으로 판단한다.
-# 인증서는 계정을 지운 뒤에도 키체인에 남는다. 그 상태로 빌드를 걸면 2분을 태우고
-# 나서야 xcodebuild 가 이렇게 말한다:
+# 팀 ID 는 Xcode 에 로그인된 계정에서 가져온다. 키체인 인증서는 계정을 지운
+# 뒤에도 남기 때문에, 그걸 믿으면 실기기 빌드가 "No Account for Team" 으로 죽는다.
 #
-#     error: No Account for Team "XXXXXXXXXX".
-#
-# 계정 목록은 2초면 읽을 수 있으므로, 그걸 먼저 본다.
+# 다만 이 검사로 **막지는 않는다**. 방금 로그인한 내용을 Xcode 가 아직 환경설정에
+# 기록하지 않았을 수 있고, 그러면 이미 로그인한 사람에게 로그인하라고 하는 꼴이
+# 된다. 게다가 xcodebuild 는 서명 문제라면 컴파일 전에 몇 초 만에 죽으므로,
+# 미리 막아서 아낄 시간도 없다. 판정은 실제 빌드에게 맡긴다.
 ACCOUNT_TEAMS="$(python3 tools/xcode_teams.py 2>>"$LOG")"
 ACCOUNT_STATUS=$?
 
@@ -118,23 +118,9 @@ fi
 
 TEAM_ID=""
 
-if (( ACCOUNT_STATUS == 1 )); then
-    die "Xcode 에 Apple ID 계정이 없습니다." \
-        "키체인에 인증서가 남아 있어도, 계정이 없으면 프로비저닝 프로파일을" \
-        "만들 수 없어 실기기 설치가 불가능합니다." \
-        "" \
-        "본인 Apple ID 라 이 단계만은 자동화할 수 없습니다:" \
-        "" \
-        "  1. Xcode 를 연다" \
-        "  2. Xcode > Settings (⌘,) > Accounts" \
-        "  3. 왼쪽 아래 '+' > Apple ID > 로그인" \
-        "  4. 터미널에서 이 명령을 다시 실행" \
-        "" \
-        "무료 Apple ID 로도 됩니다. 대신 7일마다 재설치해야 합니다."
-
-elif (( ACCOUNT_STATUS == 0 )); then
-    # 설정 파일에 적힌 팀이 실제 계정에 있는 팀인지 확인한다. 예전 인증서에서
-    # 뽑아 둔 값이 그대로 남아 있으면 여기서 걸린다.
+if (( ACCOUNT_STATUS == 0 )); then
+    # 설정 파일의 팀이 실제 계정에 있는 팀인지 확인한다. 예전 인증서에서 뽑아 둔
+    # 값이 남아 있으면 여기서 걸린다 — 이게 'No Account for Team' 의 정체다.
     if [[ -n "$CONFIG_TEAM" ]] && printf '%s\n' "$ACCOUNT_TEAMS" | cut -f1 | grep -qx "$CONFIG_TEAM"; then
         TEAM_ID="$CONFIG_TEAM"
     else
@@ -165,15 +151,30 @@ with open(path, "w") as handle:
     ok "팀 $TEAM_ID${TEAM_LABEL:+  ($TEAM_LABEL)}"
 
 else
-    # 계정 목록을 읽지 못한 경우. 못 읽은 것을 '없다' 로 다루지 않는다.
-    warn "Xcode 계정 목록을 확인하지 못했습니다. 예전 방식으로 팀을 찾습니다."
+    if (( ACCOUNT_STATUS == 1 )); then
+        warn "Xcode 환경설정에서 로그인된 Apple ID 를 찾지 못했습니다."
+        note "이미 로그인하셨다면 넘어가세요 — Xcode 가 아직 기록하지 않았을 수 있습니다."
+    else
+        warn "Xcode 계정 목록을 확인하지 못했습니다."
+    fi
+    note "키체인 인증서로 팀을 찾아 그대로 빌드해 봅니다. 계정이 정말 없다면"
+    note "빌드가 몇 초 만에 'No Account for Team' 으로 멈추고, 그때 안내합니다."
+
     TEAM_ID="$CONFIG_TEAM"
     if [[ -z "$TEAM_ID" ]]; then
+        # "Apple Development: 이름 (XXXXXXXXXX)" 형태에서 팀 ID 를 뽑는다.
         TEAM_ID="$(security find-identity -v -p codesigning 2>/dev/null \
             | grep -oE '\([A-Z0-9]{10}\)' | tr -d '()' | head -1)"
     fi
-    [[ -n "$TEAM_ID" ]] || die "개발자 팀을 찾지 못했습니다." \
-        "Xcode > Settings (⌘,) > Accounts 에서 Apple ID 로 로그인한 뒤 다시 실행하세요."
+
+    [[ -n "$TEAM_ID" ]] || die "개발자 팀을 전혀 찾지 못했습니다." \
+        "키체인에 개발자 인증서도, Xcode 에 계정도 없습니다." \
+        "" \
+        "본인 Apple ID 라 이 단계만은 자동화할 수 없습니다:" \
+        "  Xcode > Settings (⌘,) > Accounts > 왼쪽 아래 '+' > Apple ID > 로그인" \
+        "" \
+        "무료 Apple ID 로도 됩니다. 대신 7일마다 재설치해야 합니다."
+
     ok "팀 ID $TEAM_ID"
 fi
 
