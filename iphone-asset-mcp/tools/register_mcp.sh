@@ -96,17 +96,12 @@ command claude mcp remove "$NAME" --scope local </dev/null >/dev/null 2>&1
 command claude mcp remove "$NAME" --scope project </dev/null >/dev/null 2>&1
 command claude mcp remove "$NAME" --scope user </dev/null >/dev/null 2>&1
 
-ADD_HELP="$(command claude mcp add --help </dev/null 2>&1)"
 registered=""
 
-if [[ "$ADD_HELP" == *"--transport"* ]]; then
-    if command claude mcp add --transport http "$NAME" "$URL" \
-            --header "Authorization: Bearer $TOKEN" </dev/null >/dev/null 2>&1; then
-        registered="transport"
-    fi
-fi
-
-if [[ -z "$registered" && "$MCP_HELP" == *"add-json"* ]]; then
+# add-json 을 먼저 쓴다. 서버 정의를 JSON 통째로 넘기므로 CLI 버전마다 다른
+# --header 파싱에 걸리지 않고, --transport 보다 오래전부터 있던 하위 명령이다.
+# README 도 같은 이유로 add-json 을 안내한다 — 문서와 동작이 어긋나면 안 된다.
+if [[ "$MCP_HELP" == *"add-json"* ]]; then
     PAYLOAD="$(python3 -c '
 import json, sys
 print(json.dumps({
@@ -117,6 +112,17 @@ print(json.dumps({
 
     if command claude mcp add-json "$NAME" "$PAYLOAD" </dev/null >/dev/null 2>&1; then
         registered="add-json"
+    fi
+fi
+
+# 폴백. 도움말은 여기서만 부른다 — add-json 이 통했으면 프로세스를 띄울 이유가 없다.
+if [[ -z "$registered" ]]; then
+    ADD_HELP="$(command claude mcp add --help </dev/null 2>&1)"
+    if [[ "$ADD_HELP" == *"--transport"* ]]; then
+        if command claude mcp add --transport http "$NAME" "$URL" \
+                --header "Authorization: Bearer $TOKEN" </dev/null >/dev/null 2>&1; then
+            registered="transport"
+        fi
     fi
 fi
 
