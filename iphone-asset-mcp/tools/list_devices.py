@@ -40,6 +40,37 @@ def decode(path):
         return None
 
 
+def device_kind(udid):
+    """UDID 모양으로 기기 종류를 말한다. 추측이 아니라 형식으로 판별되는 것만.
+
+    - 8자리-16자리 16진수: 2017년 이후 기기(iPhone 8 세대부터). 앞 8자리는
+      칩/보드 식별자라, 값이 다르면 기종이 다르다.
+    - 40자리 16진수: 그 이전 세대 iPhone/iPad.
+    - 8-4-4-4-12 UUID: Mac.
+    """
+    text = udid.strip()
+    bare = text.replace("-", "")
+
+    if len(text) == 25 and text[8:9] == "-" and len(bare) == 24:
+        try:
+            int(bare, 16)
+        except ValueError:
+            return "", ""
+        return "최신 형식", text[:8]
+
+    if len(text) == 40:
+        try:
+            int(text, 16)
+        except ValueError:
+            return "", ""
+        return "구형 기기 (2017년 이전)", ""
+
+    if len(bare) == 32 and text.count("-") == 4:
+        return "Mac", ""
+
+    return "", ""
+
+
 def summarize(profile):
     teams = profile.get("TeamIdentifier") or []
     expires = profile.get("ExpirationDate")
@@ -92,9 +123,18 @@ def main():
         print(f"    팀      {label}  {info['team_name']}")
         print(f"    플랫폼  {', '.join(info['platforms']) or '알 수 없음'}")
         print(f"    기기    {len(info['devices'])}대")
+        current_prefix = device_kind(current)[1] if current else ""
         for udid in info["devices"]:
-            mark = "  ← 지금 연결된 이 폰" if current and udid.lower() == current else ""
-            print(f"      {udid}{mark}")
+            kind, prefix = device_kind(udid)
+            if current and udid.lower() == current:
+                tail = "  ← 지금 연결된 이 폰"
+            elif kind == "최신 형식" and current_prefix and prefix != current_prefix:
+                tail = "  (이 폰과 다른 기종)"
+            elif kind:
+                tail = f"  ({kind})"
+            else:
+                tail = ""
+            print(f"      {udid}{tail}")
 
         by_team.setdefault(label, set()).update(d.lower() for d in info["devices"])
 
@@ -110,6 +150,16 @@ def main():
     print("\n무료 팀은 3대가 한도이고, 등록을 지워서 자리를 비울 수 없습니다.")
     print("위 목록에 없는 기기가 더 등록돼 있을 수도 있습니다 — 프로파일은")
     print("발급 시점의 사본이라, 실제 계정 상태와 다를 수 있습니다.")
+
+    # 데이터를 보여주는 데서 끝내지 않는다. 결론까지 말해야 쓸모가 있다.
+    if current:
+        for team, devices in sorted(by_team.items()):
+            if current in devices or len(devices) < 3:
+                continue
+            print(f"\n결론: 팀 {team} 은 3대가 다 찼고 그 안에 이 폰이 없습니다.")
+            print("      이 팀으로는 이 폰에 설치할 수 없습니다. 자리를 비울 방법도 없습니다.")
+            print("      다른 Apple ID 를 Xcode 에 추가하거나(무료), 유료 프로그램에 가입하세요.")
+            print("      시뮬레이터는 서명이 필요 없으므로 그대로 씁니다: bash run-simulator.sh")
     return 0
 
 
