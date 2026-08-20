@@ -102,13 +102,17 @@ final class AppState: ObservableObject {
         if autoStart { start() }
     }
 
-    /// 시뮬레이터에서만, 접속 정보를 앱 컨테이너에 남긴다.
+    /// 접속 정보를 앱 컨테이너에 남긴다. 러너 스크립트가 이걸 읽어 토큰을
+    /// 자동으로 등록한다 — 사람이 토큰을 눈으로 옮겨 적을 이유가 없다.
     ///
-    /// 시뮬레이터의 컨테이너는 Mac 디스크에 있으므로 run-simulator.sh 가 이 파일을
-    /// 읽어 토큰을 자동으로 등록할 수 있다. 사람이 43자 토큰을 눈으로 옮길 이유가 없다.
-    /// 실기기에서는 쓰지 않는다 — 토큰은 키체인에만 두고, 기기에서는 복사 버튼을 쓴다.
+    /// 시뮬레이터의 컨테이너는 Mac 디스크에 그대로 있고, 실기기는 개발 서명된
+    /// 빌드에 한해 `devicectl device copy from` 으로 꺼낼 수 있다. 그래서 양쪽
+    /// 모두에 쓴다.
+    ///
+    /// 토큰이 평문으로 남지만 새로 새는 것은 없다. 이 파일을 읽을 수 있는 상대는
+    /// 앱 자신과, 이 빌드를 서명한 개발자의 Mac 뿐이다. 같은 토큰을 앱 화면과
+    /// QR 코드가 이미 그대로 보여주고 있다.
     private func writeConnectionFile() {
-        #if targetEnvironment(simulator)
         guard let directory = try? FileManager.default.url(for: .applicationSupportDirectory,
                                                            in: .userDomainMask,
                                                            appropriateFor: nil,
@@ -121,7 +125,6 @@ final class AppState: ObservableObject {
         ]
         try? JSONUtil.data(payload, pretty: true)
             .write(to: directory.appendingPathComponent("connection.json"), options: .atomic)
-        #endif
     }
 
     private func wireServer() {
