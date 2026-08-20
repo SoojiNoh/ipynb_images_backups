@@ -393,7 +393,11 @@ if (( BUILD_STATUS != 0 )); then
         note "  python3 tools/list_devices.py $DEVICE_UDID"
         note ""
         note "선택지 세 가지:"
-        note "  1. 다른 Apple ID 로 로그인 — 무료, 즉시. Xcode > Settings (⌘,) > Accounts > '+'"
+        note "  1. 다른 Apple 계정 추가 — 무료, 즉시."
+        note "     계정 만들기:  https://account.apple.com/account"
+        note "     (루트 주소는 로그인 페이지입니다. 끝의 /account 까지 있어야 생성 폼입니다.)"
+        note "     만든 뒤:  Xcode > Settings (⌘,) > Accounts > 왼쪽 아래 '+' > Apple ID"
+        note "     Xcode 의 로그인 창에서는 계정을 만들 수 없습니다 — 안내 문구일 뿐 링크가 아닙니다."
         note "  2. 유료 Apple Developer Program — 연 \$99, 기기 100대"
         note "  3. 시뮬레이터로 계속 사용 — 이미 되고 있습니다:  bash run-simulator.sh"
         if [[ -n "${ACCOUNT_TEAMS:-}" ]]; then
