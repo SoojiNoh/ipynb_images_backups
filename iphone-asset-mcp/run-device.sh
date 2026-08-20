@@ -380,10 +380,43 @@ if (( BUILD_STATUS != 0 )) && [[ "$BUILD_OUTPUT" == *"Device is busy"* \
     printf '%s\n' "$BUILD_OUTPUT" >> "$LOG"
 fi
 
+# 번들 ID 는 팀을 옮기면 반드시 걸리는 자리다. 앞선 팀이 이미 그 이름으로 App ID 를
+# 등록해 두면 새 팀은 같은 이름을 쓸 수 없다. 사람이 손으로 이름을 지어낼 일이 아니다.
+#
+# 팀 ID 를 붙여 만든다 — 팀마다 고정이라 다시 돌려도 같은 값이 나온다. 무료 계정은
+# App ID 를 7일에 10개까지만 만들 수 있어서, 매번 다른 이름을 지으면 그 한도를 태운다.
+if (( BUILD_STATUS != 0 )) && [[ -z "${ASSETBRIDGE_BUNDLE_ID:-}" ]] \
+        && { [[ "$BUILD_OUTPUT" == *"Failed Registering Bundle Identifier"* ]] \
+          || [[ "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* ]] \
+          || [[ "$BUILD_OUTPUT" == *"cannot be registered to your development team"* ]]; }; then
+
+    BASE_BUNDLE=""
+    if [[ -f Config/Local.xcconfig ]]; then
+        BASE_BUNDLE="$(grep -E '^ASSETBRIDGE_BUNDLE_ID' Config/Local.xcconfig \
+            | sed -E 's/.*=[[:space:]]*//' | tr -d '[:space:]')"
+    fi
+    [[ -n "$BASE_BUNDLE" ]] || BASE_BUNDLE="com.example.assetbridge"
+
+    SUFFIXED="${BASE_BUNDLE}.$(printf '%s' "$TEAM_ID" | tr '[:upper:]' '[:lower:]')"
+    warn "번들 ID $BASE_BUNDLE 는 다른 팀이 이미 가져갔습니다."
+    note "$SUFFIXED 로 바꿔 다시 시도합니다. 팀마다 고정된 이름이라 다음에도 같습니다."
+
+    EXTRA_SETTINGS+=("ASSETBRIDGE_BUNDLE_ID=$SUFFIXED")
+    BUILD_OUTPUT="$(run_build)"
+    BUILD_STATUS=$?
+    printf '%s\n' "$BUILD_OUTPUT" >> "$LOG"
+fi
+
 if (( BUILD_STATUS != 0 )); then
     printf '\n    %s✗%s 빌드 실패\n\n' "$RED" "$OFF"
 
-    if [[ "$BUILD_OUTPUT" == *"maximum number of registered"* ]]; then
+    if [[ "$BUILD_OUTPUT" == *"Failed Registering Bundle Identifier"* \
+            || "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* \
+            || "$BUILD_OUTPUT" == *"cannot be registered to your development team"* ]]; then
+        note "이 번들 ID 는 다른 팀이 이미 가져갔습니다. 이름만 바꾸면 됩니다:"
+        note ""
+        note "  ASSETBRIDGE_BUNDLE_ID=com.${USER:-me}.assetbridge2 bash go.sh"
+    elif [[ "$BUILD_OUTPUT" == *"maximum number of registered"* ]]; then
         note "Apple 계정의 기기 등록 한도에 걸렸습니다. 코드나 설정 문제가 아닙니다."
         note ""
         note "무료 Apple ID(Personal Team)는 기기를 3대까지만 등록할 수 있고,"
@@ -408,8 +441,7 @@ if (( BUILD_STATUS != 0 )); then
                 note "  ASSETBRIDGE_TEAM=$tid bash go.sh    # $tname ($tkind)"
             done <<< "$ACCOUNT_TEAMS"
         fi
-    elif [[ "$BUILD_OUTPUT" == *"No Account for Team"* \
-            || "$BUILD_OUTPUT" == *"No profiles for"* ]]; then
+    elif [[ "$BUILD_OUTPUT" == *"No Account for Team"* ]]; then
         note "Xcode 에 이 팀의 Apple ID 계정이 없습니다. 인증서만으로는 안 됩니다:"
         note ""
         note "  Xcode > Settings (⌘,) > Accounts > 왼쪽 아래 '+' > Apple ID > 로그인"
@@ -418,10 +450,6 @@ if (( BUILD_STATUS != 0 )); then
     elif [[ "$BUILD_OUTPUT" == *"requires a development team"* ]]; then
         note "서명 설정이 아직 안 붙었습니다. Xcode 에서 AssetBridge 타겟 >"
         note "Signing & Capabilities > Team 을 직접 골라 주세요."
-    elif [[ "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* ]]; then
-        note "이 번들 ID 는 이미 다른 팀이 가져갔습니다. 이름만 바꾸면 됩니다:"
-        note ""
-        note "  ASSETBRIDGE_BUNDLE_ID=com.${USER:-me}.assetbridge2 bash go.sh"
     elif [[ "$BUILD_OUTPUT" == *"Device is busy"* \
             || "$BUILD_OUTPUT" == *"Timed out waiting for all destinations"* \
             || "$BUILD_OUTPUT" == *"Ineligible destinations"* ]]; then
