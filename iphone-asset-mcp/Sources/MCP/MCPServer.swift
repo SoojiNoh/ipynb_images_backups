@@ -143,10 +143,15 @@ final class MCPServer {
             // 이 경로로 할 수 있는 일은 항목을 받은함에 **넣는 것**뿐이다.
             // 읽어 가는 문은 하나도 열려 있지 않으므로, 최악의 경우도 같은 폰에
             // 깔린 다른 앱이 쓰레기를 밀어 넣는 정도다.
-            guard let peer, NetworkInfo.isLoopback(peer) else {
+            //
+            // peer 가 nil 이면 "다른 기기" 가 아니라 "주소를 못 읽었다" 는 뜻이다.
+            // 못 읽은 것을 거절 사유로 삼으면, 정작 같은 기기에서 온 공유가 막힌다.
+            // 읽었는데 루프백이 아닌 경우에만 막는다.
+            if let peer, !NetworkInfo.isLoopback(peer) {
+                onEvent?(.warn, "공유 거절 — 같은 기기가 아님 (\(peer))")
                 return .error("공유 수신은 같은 기기에서만 됩니다.", status: 403)
             }
-            return receiveShare(request)
+            return receiveShare(request, peer: peer)
 
         case ("POST", "/mcp"):
             guard authorize(request, peer: peer) else { return unauthorized(peer) }
@@ -172,11 +177,15 @@ final class MCPServer {
 
     // MARK: - 공유 수신
 
-    private func receiveShare(_ request: HTTPRequest) -> HTTPResponse {
+    private func receiveShare(_ request: HTTPRequest, peer: String?) -> HTTPResponse {
+        // 실패는 전부 로그에 남긴다. 익스텐션 화면은 좁아서 한 줄밖에 못 보여 주는데,
+        // 그 한 줄만으로는 왜 안 됐는지 알 수 없다.
         guard config.acceptShares else {
-            return .error("공유 수신이 꺼져 있습니다.", status: 403)
+            onEvent?(.warn, "공유 거절 — '공유 시트로 받기' 가 꺼져 있음")
+            return .error("공유 수신이 꺼져 있습니다. 앱 설정에서 켜세요.", status: 403)
         }
         guard let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] else {
+            onEvent?(.warn, "공유 거절 — 본문을 JSON 으로 읽지 못함 (\(request.body.count)바이트)")
             return .error("Invalid JSON", status: 400)
         }
 
@@ -187,6 +196,7 @@ final class MCPServer {
         let data = object.string("data").flatMap { Data(base64Encoded: $0) }
 
         guard text != nil || data != nil else {
+            onEvent?(.warn, "공유 거절 — 내용이 비어 있음 (kind=\(kind))")
             return .error("내용이 비어 있습니다.", status: 400)
         }
         guard let id = InboxStore.shared.add(kind: kind,
@@ -194,10 +204,11 @@ final class MCPServer {
                                              name: name,
                                              mimeType: mimeType,
                                              data: data) else {
+            onEvent?(.error, "공유 저장 실패 — 디스크에 쓰지 못했습니다")
             return .error("저장하지 못했습니다.", status: 500)
         }
 
-        onEvent?(.info, "공유 받음 — \(kind)\(name.map { " (\($0))" } ?? "")")
+        onEvent?(.info, "공유 받음 — \(kind)\(name.map { " (\($0))" } ?? "") from \(peer ?? "주소 불명")")
         return .json(["ok": true, "id": id])
     }
 

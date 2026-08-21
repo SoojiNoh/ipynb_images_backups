@@ -59,16 +59,25 @@ final class ShareViewController: UIViewController {
         }
 
         var sent = 0
-        for payload in payloads where await post(payload, port: port) {
-            sent += 1
+        var lastFailure = ""
+
+        for payload in payloads {
+            let result = await post(payload, port: port)
+            if result.ok {
+                sent += 1
+            } else {
+                lastFailure = result.detail
+            }
         }
 
         if sent == payloads.count {
             await finish("보냈습니다 · \(sent)개", success: true)
         } else if sent > 0 {
-            await finish("일부만 보냈습니다 · \(sent)/\(payloads.count)", success: false)
+            await finish("일부만 보냈습니다 · \(sent)/\(payloads.count)\n\(lastFailure)", success: false)
         } else {
-            await finish("보내지 못했습니다.", success: false)
+            // 이유를 같이 보여 준다. "보내지 못했습니다" 한 줄로는 앱을 열어
+            // 로그를 뒤지기 전까지 아무것도 알 수 없다.
+            await finish("보내지 못했습니다.\n\(lastFailure)", success: false)
         }
     }
 
@@ -78,7 +87,7 @@ final class ShareViewController: UIViewController {
         status.textColor = success ? .systemGreen : .systemRed
 
         // 성공은 빨리 사라지는 편이 낫고, 실패는 읽을 시간이 필요하다.
-        try? await Task.sleep(nanoseconds: success ? 600_000_000 : 2_200_000_000)
+        try? await Task.sleep(nanoseconds: success ? 600_000_000 : 4_000_000_000)
         extensionContext?.completeRequest(returningItems: nil)
     }
 
@@ -200,8 +209,16 @@ final class ShareViewController: UIViewController {
         return (response as? HTTPURLResponse)?.statusCode == 200
     }
 
-    private func post(_ payload: Payload, port: Int) async -> Bool {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/share") else { return false }
+    /// 성공 여부와, 실패했을 때 사람이 읽을 수 있는 이유.
+    private struct PostResult {
+        let ok: Bool
+        let detail: String
+    }
+
+    private func post(_ payload: Payload, port: Int) async -> PostResult {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/share") else {
+            return PostResult(ok: false, detail: "주소를 만들지 못했습니다.")
+        }
 
         var body: [String: Any] = ["kind": payload.kind]
         if let text = payload.text { body["text"] = text }
@@ -209,15 +226,35 @@ final class ShareViewController: UIViewController {
         if let mimeType = payload.mimeType { body["mimeType"] = mimeType }
         if let data = payload.data { body["data"] = data.base64EncodedString() }
 
-        guard let encoded = try? JSONSerialization.data(withJSONObject: body) else { return false }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: body) else {
+            return PostResult(ok: false, detail: "내용을 JSON 으로 만들지 못했습니다.")
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 15
+        request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = encoded
 
-        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
-        return (response as? HTTPURLResponse)?.statusCode == 200
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            return PostResult(ok: false, detail: error.localizedDescription)
+        }
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 200 { return PostResult(ok: true, detail: "") }
+
+        // 서버가 이유를 본문에 담아 준다. 상태 코드만 보여 주면 또 추측하게 된다.
+        var reason = ""
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            reason = (object["error"] as? [String: Any])?["message"] as? String
+                ?? object["message"] as? String ?? ""
+        }
+        if reason.isEmpty { reason = String(data: data.prefix(120), encoding: .utf8) ?? "" }
+
+        return PostResult(ok: false, detail: "HTTP \(status)\(reason.isEmpty ? "" : " · \(reason)")")
     }
 }

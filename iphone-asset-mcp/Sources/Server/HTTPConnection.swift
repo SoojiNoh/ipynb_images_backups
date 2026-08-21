@@ -33,8 +33,12 @@ final class HTTPConnection {
         self.onClose = onClose
     }
 
+    /// 상대 주소. 루프백 연결에서 endpoint 가 기대한 모양으로 오지 않는 경우가
+    /// 있어서, 비면 경로 쪽도 본다. nil 을 그대로 흘리면 라우팅에서 "같은 기기가
+    /// 아니다" 로 잘못 판정된다.
     var peerAddress: String? {
         NetworkInfo.peerAddress(from: connection.endpoint)
+            ?? NetworkInfo.peerAddress(from: connection.currentPath?.remoteEndpoint)
     }
 
     func start() {
