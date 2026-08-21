@@ -327,6 +327,7 @@ final class AppState: ObservableObject {
         summary[.device] = "권한 불필요"
         summary[.clipboard] = "권한 불필요"
         summary[.files] = "앱 폴더 + 추가한 폴더"
+        summary[.inbox] = "공유 시트로 받음"
 
         permissionSummary = summary
     }
@@ -374,7 +375,8 @@ final class AppState: ObservableObject {
         case .location: locationProvider.requestAuthorization()
         case .music: await musicProvider.requestAuthorization()
         case .motion: _ = try? await motionProvider.call("motion_activity", arguments: [:])
-        case .device, .clipboard, .files: break
+        // 받은함은 사용자가 공유 시트에서 직접 건네주는 통로라 시스템 권한이 없다.
+        case .device, .clipboard, .files, .inbox: break
         }
         refreshPermissions()
     }
