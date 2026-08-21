@@ -150,10 +150,37 @@ except Exception:
 
 MCP_URL="$(read_field url)"
 MCP_TOKEN="$(read_field token)"
+HOSTNAME_URL="$(read_field hostname_url)"
 
 if [[ -z "$MCP_URL" || -z "$MCP_TOKEN" ]]; then
     warn "접속 정보를 읽지 못했습니다: $PULLED"
     exit 1
+fi
+
+# 응답을 확인하는 공용 루틴. 주소만 바꿔 가며 쓴다.
+probe_url() {
+    curl -sS -m 4 -o "$PROBE_BODY" -w '%{http_code}' \
+        -X POST "$1" \
+        -H 'Content-Type: application/json' \
+        -H 'Accept: application/json, text/event-stream' \
+        -H "Authorization: Bearer $MCP_TOKEN" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>>"$LOG"
+}
+
+PROBE_BODY="${TMPDIR:-/tmp}/assetbridge-link-probe.json"
+
+# IP 는 DHCP 로 바뀐다. 바뀌면 등록해 둔 주소가 죽고, 사람이 이걸 다시 돌려야 한다.
+# .local 이름은 주소가 바뀌어도 따라가므로, 통하기만 하면 이쪽이 낫다.
+#
+# 다만 mDNS 를 막는 공유기도 있고 회사망에서도 흔히 안 된다. 그래서 믿고 쓰지 않고
+# 실제로 찔러 본 뒤에만 고른다 — 안 되면 IP 로 조용히 돌아간다.
+if [[ -n "$HOSTNAME_URL" ]]; then
+    if [[ "$(probe_url "$HOSTNAME_URL")" == "200" ]]; then
+        MCP_URL="$HOSTNAME_URL"
+        ok "이름으로 붙습니다 — IP 가 바뀌어도 따라갑니다"
+    else
+        note "이름($HOSTNAME_URL)이 풀리지 않아 IP 를 씁니다. 공유기가 mDNS 를 막는 경우입니다."
+    fi
 fi
 
 ok "접속 주소 $MCP_URL"
@@ -164,15 +191,9 @@ ok "접속 주소 $MCP_URL"
 # 접근' 허용, 그리고 서로 다른 Wi-Fi. 둘 다 화면을 보는 사람만 고칠 수 있다.
 printf '    iPhone 응답을 기다립니다. 화면에 %s로컬 네트워크 접근%s 창이 뜨면 허용해 주세요' "$BOLD" "$OFF"
 
-PROBE_BODY="${TMPDIR:-/tmp}/assetbridge-link-probe.json"
 PROBE_CODE=""
 for _ in $(seq 1 30); do
-    PROBE_CODE="$(curl -sS -m 4 -o "$PROBE_BODY" -w '%{http_code}' \
-        -X POST "$MCP_URL" \
-        -H 'Content-Type: application/json' \
-        -H 'Accept: application/json, text/event-stream' \
-        -H "Authorization: Bearer $MCP_TOKEN" \
-        -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' 2>>"$LOG")"
+    PROBE_CODE="$(probe_url "$MCP_URL")"
     [[ "$PROBE_CODE" == "200" ]] && break
     printf '.'
     sleep 2

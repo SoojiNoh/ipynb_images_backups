@@ -119,12 +119,14 @@ final class AppState: ObservableObject {
                                                            in: .userDomainMask,
                                                            appropriateFor: nil,
                                                            create: true) else { return }
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "url": endpointURL,
             "token": token,
             "port": port,
             "claude_code_command": claudeCodeCommand
         ]
+        // IP 가 바뀌어도 따라가는 주소. 되는지는 받는 쪽이 확인한다.
+        if let hostnameURL { payload["hostname_url"] = hostnameURL }
         try? JSONUtil.data(payload, pretty: true)
             .write(to: directory.appendingPathComponent("connection.json"), options: .atomic)
     }
@@ -211,6 +213,18 @@ final class AppState: ObservableObject {
 
     var endpointURL: String {
         "http://\(NetworkInfo.clientReachableHost()):\(port)/mcp"
+    }
+
+    /// IP 대신 쓸 수 있는 mDNS 이름. DHCP 가 주소를 바꿔도 이 이름은 그대로다.
+    ///
+    /// 같은 LAN 안에서만 풀리고, mDNS 를 막는 공유기도 있어서 항상 되는 것은
+    /// 아니다. 그래서 클라이언트에게 강요하지 않고 후보로만 알려 준다 —
+    /// 실제로 통하는지는 붙여 보는 쪽이 확인한다.
+    var hostnameURL: String? {
+        let raw = ProcessInfo.processInfo.hostName.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty, raw != "localhost", !raw.hasPrefix("127.") else { return nil }
+        let host = raw.hasSuffix(".local") ? raw : raw + ".local"
+        return "http://\(host):\(port)/mcp"
     }
 
     /// Claude Code 에 붙여넣을 수 있는 한 줄 명령.
