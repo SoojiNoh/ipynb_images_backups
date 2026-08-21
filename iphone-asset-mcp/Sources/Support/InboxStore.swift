@@ -48,6 +48,7 @@ final class InboxStore {
              text: String?,
              name: String?,
              mimeType: String?,
+             note: String?,
              data: Data?) throws -> String {
         lock.lock()
         defer { lock.unlock() }
@@ -66,6 +67,8 @@ final class InboxStore {
         if let text { meta["text"] = text }
         if let name { meta["name"] = name }
         if let mimeType { meta["mimeType"] = mimeType }
+        // 사용자가 공유하면서 적은 지시. 이게 이 항목의 존재 이유다.
+        if let note, !note.isEmpty { meta["note"] = note }
 
         if let data, !data.isEmpty {
             let binary = directory.appendingPathComponent("\(id).bin")

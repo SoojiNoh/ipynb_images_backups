@@ -16,41 +16,132 @@ final class ShareViewController: UIViewController {
     /// 기본값을 먼저 보고, 사용자가 스테퍼로 옮겼을 만한 범위를 조금 더 훑는다.
     private static let candidatePorts = Array(8765...8775)
 
+    /// 사용자가 적는 지시. 이게 없으면 받는 쪽은 이 항목으로 무엇을 해야 하는지
+    /// 알 수 없다 — 요약인지, 캘린더에 넣으라는 건지, 그냥 보관인지.
+    private let noteField = UITextField()
+    private let preview = UILabel()
     private let status = UILabel()
+    private let sendButton = UIButton(type: .system)
+
+    private var payloads: [Payload] = []
+
+    private static let presets = ["요약해줘", "캘린더에 넣어줘", "할 일로 추가해줘", "번역해줘"]
 
     override func viewDidLoad() {
         super.viewDidLoad()
         buildUI()
-        Task { await run() }
+        Task {
+            payloads = await collect()
+            showPreview()
+        }
     }
 
     private func buildUI() {
         view.backgroundColor = .systemBackground
 
-        status.text = "AssetBridge 로 보내는 중…"
-        status.font = .preferredFont(forTextStyle: .body)
+        let title = UILabel()
+        title.text = "AssetBridge 로 보내기"
+        title.font = .preferredFont(forTextStyle: .headline)
+
+        preview.font = .preferredFont(forTextStyle: .footnote)
+        preview.textColor = .secondaryLabel
+        preview.numberOfLines = 3
+        preview.text = "내용을 읽는 중…"
+
+        noteField.placeholder = "무엇을 해드릴까요? (비워도 됩니다)"
+        noteField.borderStyle = .roundedRect
+        noteField.font = .preferredFont(forTextStyle: .body)
+        noteField.returnKeyType = .send
+        noteField.delegate = self
+        noteField.clearButtonMode = .whileEditing
+
+        // 자주 쓰는 것은 눌러서 채우고, 그대로 두거나 고쳐 쓸 수 있게 한다.
+        let chips = UIStackView()
+        chips.axis = .horizontal
+        chips.spacing = 8
+        chips.distribution = .fillProportionally
+        for (index, preset) in Self.presets.enumerated() {
+            let chip = UIButton(type: .system)
+            chip.setTitle(preset, for: .normal)
+            chip.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
+            chip.titleLabel?.adjustsFontSizeToFitWidth = true
+            chip.backgroundColor = .secondarySystemBackground
+            chip.layer.cornerRadius = 8
+            chip.tag = index
+            chip.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
+            chips.addArrangedSubview(chip)
+        }
+
+        let cancelButton = UIButton(type: .system)
+        cancelButton.setTitle("취소", for: .normal)
+        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+
+        sendButton.setTitle("보내기", for: .normal)
+        sendButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
+        sendButton.isEnabled = false
+
+        let buttons = UIStackView(arrangedSubviews: [cancelButton, UIView(), sendButton])
+        buttons.axis = .horizontal
+
+        status.font = .preferredFont(forTextStyle: .footnote)
         status.textAlignment = .center
         status.numberOfLines = 0
-        status.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(status)
+
+        let stack = UIStackView(arrangedSubviews: [title, preview, chips, noteField, buttons, status])
+        stack.axis = .vertical
+        stack.spacing = 14
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            status.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            status.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            status.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),
-            status.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32)
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            chips.heightAnchor.constraint(equalToConstant: 34)
         ])
+    }
+
+    private func showPreview() {
+        guard !payloads.isEmpty else {
+            preview.text = "보낼 수 있는 내용이 없습니다."
+            preview.textColor = .systemRed
+            return
+        }
+
+        let first = payloads[0]
+        let body = first.text ?? first.name ?? first.kind
+        let extra = payloads.count > 1 ? "  · 외 \(payloads.count - 1)개" : ""
+        preview.text = body.trimmingCharacters(in: .whitespacesAndNewlines) + extra
+        sendButton.isEnabled = true
+    }
+
+    @objc private func chipTapped(_ sender: UIButton) {
+        guard Self.presets.indices.contains(sender.tag) else { return }
+        noteField.text = Self.presets[sender.tag]
+    }
+
+    @objc private func cancelTapped() {
+        extensionContext?.cancelRequest(withError: NSError(domain: "AssetBridge", code: 0))
+    }
+
+    @objc private func sendTapped() {
+        guard sendButton.isEnabled else { return }
+        sendButton.isEnabled = false
+        noteField.resignFirstResponder()
+        Task { await run(note: noteField.text ?? "") }
     }
 
     // MARK: - 흐름
 
-    private func run() async {
-        let payloads = await collect()
-
+    private func run(note: String) async {
         guard !payloads.isEmpty else {
             await finish("보낼 수 있는 내용이 없습니다.", success: false)
             return
         }
+
+        status.text = "보내는 중…"
+        status.textColor = .secondaryLabel
 
         guard let port = await findPort() else {
             await finish("AssetBridge 가 응답하지 않습니다.\n앱을 한 번 열어 두고 다시 공유해 주세요.",
@@ -62,7 +153,7 @@ final class ShareViewController: UIViewController {
         var lastFailure = ""
 
         for payload in payloads {
-            let result = await post(payload, port: port)
+            let result = await post(payload, port: port, note: note)
             if result.ok {
                 sent += 1
             } else {
@@ -85,9 +176,11 @@ final class ShareViewController: UIViewController {
     private func finish(_ message: String, success: Bool) async {
         status.text = message
         status.textColor = success ? .systemGreen : .systemRed
+        if !success { sendButton.isEnabled = true }
 
         // 성공은 빨리 사라지는 편이 낫고, 실패는 읽을 시간이 필요하다.
-        try? await Task.sleep(nanoseconds: success ? 600_000_000 : 4_000_000_000)
+        guard success else { return }
+        try? await Task.sleep(nanoseconds: 700_000_000)
         extensionContext?.completeRequest(returningItems: nil)
     }
 
@@ -215,12 +308,14 @@ final class ShareViewController: UIViewController {
         let detail: String
     }
 
-    private func post(_ payload: Payload, port: Int) async -> PostResult {
+    private func post(_ payload: Payload, port: Int, note: String) async -> PostResult {
         guard let url = URL(string: "http://127.0.0.1:\(port)/share") else {
             return PostResult(ok: false, detail: "주소를 만들지 못했습니다.")
         }
 
         var body: [String: Any] = ["kind": payload.kind]
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { body["note"] = trimmed }
         if let text = payload.text { body["text"] = text }
         if let name = payload.name { body["name"] = name }
         if let mimeType = payload.mimeType { body["mimeType"] = mimeType }
@@ -256,5 +351,13 @@ final class ShareViewController: UIViewController {
         if reason.isEmpty { reason = String(data: data.prefix(120), encoding: .utf8) ?? "" }
 
         return PostResult(ok: false, detail: "HTTP \(status)\(reason.isEmpty ? "" : " · \(reason)")")
+    }
+}
+
+// 키보드 리턴으로도 보낼 수 있게 한다. 보내기 버튼까지 손을 옮길 이유가 없다.
+extension ShareViewController: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        sendTapped()
+        return true
     }
 }

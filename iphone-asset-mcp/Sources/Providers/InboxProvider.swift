@@ -20,6 +20,9 @@ final class InboxProvider: ToolProvider {
                     어떤 앱에서 보냈든 여기 모입니다. \
                     Google Drive·Notion·Slack·아티팩트 등 온라인 서비스의 '공유'와는 \
                     전혀 관계가 없습니다. \
+                    각 항목의 `note` 는 사용자가 공유하면서 직접 적은 **지시**입니다 \
+                    (예: "캘린더에 넣어줘", "요약해줘"). note 가 있으면 그대로 수행하세요 — \
+                    무엇을 원하는지 다시 묻지 마세요. 비어 있을 때만 물어보면 됩니다. \
                     긴 텍스트는 잘려 나오므로, 전문이 필요하면 inbox_read 를 쓰세요.
                     """,
                 inputSchema: Schema.object([

@@ -193,6 +193,7 @@ final class MCPServer {
         let text = object.string("text")
         let name = object.string("name")
         let mimeType = object.string("mimeType")
+        let note = object.string("note")
         let data = object.string("data").flatMap { Data(base64Encoded: $0) }
 
         guard text != nil || data != nil else {
@@ -205,6 +206,7 @@ final class MCPServer {
                                            text: text,
                                            name: name,
                                            mimeType: mimeType,
+                                           note: note,
                                            data: data)
         } catch {
             // 무엇이 왜 안 됐는지 그대로 올려 보낸다. 익스텐션 화면과 활동 로그
@@ -214,7 +216,7 @@ final class MCPServer {
             return .error("저장하지 못했습니다: \(reason)", status: 500)
         }
 
-        onEvent?(.info, "공유 받음 — \(kind)\(name.map { " (\($0))" } ?? "") from \(peer ?? "주소 불명")")
+        onEvent?(.info, "공유 받음 — \(kind)\(note.map { " · \($0)" } ?? "")")
         return .json(["ok": true, "id": id])
     }
 
