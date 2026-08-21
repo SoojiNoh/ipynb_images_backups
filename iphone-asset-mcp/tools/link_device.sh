@@ -169,18 +169,75 @@ probe_url() {
 
 PROBE_BODY="${TMPDIR:-/tmp}/assetbridge-link-probe.json"
 
-# IP 는 DHCP 로 바뀐다. 바뀌면 등록해 둔 주소가 죽고, 사람이 이걸 다시 돌려야 한다.
-# .local 이름은 주소가 바뀌어도 따라가므로, 통하기만 하면 이쪽이 낫다.
+PORT="$(read_field port)"
+[[ -n "$PORT" ]] || PORT=8765
+
+# 주소를 고르는 순서. 위에 있을수록 오래 간다.
 #
-# 다만 mDNS 를 막는 공유기도 있고 회사망에서도 흔히 안 된다. 그래서 믿고 쓰지 않고
-# 실제로 찔러 본 뒤에만 고른다 — 안 되면 IP 로 조용히 돌아간다.
-if [[ -n "$HOSTNAME_URL" ]]; then
-    if [[ "$(probe_url "$HOSTNAME_URL")" == "200" ]]; then
-        MCP_URL="$HOSTNAME_URL"
-        ok "이름으로 붙습니다 — IP 가 바뀌어도 따라갑니다"
-    else
-        note "이름($HOSTNAME_URL)이 풀리지 않아 IP 를 씁니다. 공유기가 mDNS 를 막는 경우입니다."
+#   1. ASSETBRIDGE_HOST  — 사람이 직접 지정
+#   2. Tailscale         — 다른 Wi-Fi, LTE, 어디서든. 주소가 고정
+#   3. <이름>.local      — 같은 LAN 안에서만. DHCP 가 IP 를 바꿔도 버팀
+#   4. LAN IP            — 지금 이 순간에만 맞는 주소
+#
+# 어느 것도 믿고 쓰지 않는다. 전부 실제로 찔러 보고, 200 이 오는 첫 번째를 쓴다.
+
+# Tailscale 로 붙어 있는 iOS 기기를 찾는다.
+#
+# CLI 는 Homebrew 설치본과 App Store 설치본의 경로가 다르다. 둘 다 본다.
+tailscale_cli() {
+    if command -v tailscale >/dev/null 2>&1; then
+        echo tailscale
+    elif [[ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]]; then
+        echo /Applications/Tailscale.app/Contents/MacOS/Tailscale
     fi
+}
+
+tailscale_ios_hosts() {
+    local cli; cli="$(tailscale_cli)"
+    [[ -n "$cli" ]] || return 0
+    # 이름을 맞춰 찾지 않고 iOS 피어만 추려 낸다. 이름은 사람이 바꾸지만
+    # OS 는 안 바뀐다. 토큰이 틀린 곳에는 어차피 401 이 돌아온다.
+    "$cli" status --json 2>>"$LOG" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(0)
+for peer in (data.get("Peer") or {}).values():
+    if (peer.get("OS") or "").lower() != "ios":
+        continue
+    if not peer.get("Online", False):
+        continue
+    for address in peer.get("TailscaleIPs") or []:
+        if ":" not in address:          # IPv4 만. curl 에 넣기 쉽다.
+            print(address)
+' 2>>"$LOG"
+}
+
+CANDIDATES=()
+[[ -n "${ASSETBRIDGE_HOST:-}" ]] && CANDIDATES+=("http://${ASSETBRIDGE_HOST}:${PORT}/mcp")
+while read -r ts_ip; do
+    [[ -n "$ts_ip" ]] && CANDIDATES+=("http://${ts_ip}:${PORT}/mcp")
+done < <(tailscale_ios_hosts)
+[[ -n "$HOSTNAME_URL" ]] && CANDIDATES+=("$HOSTNAME_URL")
+
+for candidate in ${CANDIDATES[@]+"${CANDIDATES[@]}"}; do
+    [[ "$(probe_url "$candidate")" == "200" ]] || continue
+    MCP_URL="$candidate"
+    case "$candidate" in
+        *//100.*|*//"${ASSETBRIDGE_HOST:-@@none@@}":*)
+            ok "Tailscale 로 붙습니다 — 다른 Wi-Fi 나 LTE 에서도 그대로 됩니다" ;;
+        *.local:*)
+            ok "이름으로 붙습니다 — 같은 Wi-Fi 안에서 IP 가 바뀌어도 따라갑니다" ;;
+        *)
+            ok "지정하신 주소로 붙습니다" ;;
+    esac
+    break
+done
+
+if [[ "$MCP_URL" != http://100.* && "$MCP_URL" != *.local:* ]]; then
+    note "지금은 이 Wi-Fi 안에서만 됩니다. 어디서나 쓰려면 Tailscale 을 깔아 주세요:"
+    note "  Mac·아이폰 양쪽에 설치 후 같은 계정으로 로그인 → 이 스크립트를 다시 실행"
 fi
 
 ok "접속 주소 $MCP_URL"
