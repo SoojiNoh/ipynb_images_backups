@@ -1,101 +1,129 @@
 #!/usr/bin/env bash
 #
-# 6일마다 앱을 다시 설치하도록 Mac 에 예약을 건다.
+# Mac 이 알아서 하도록 예약을 건다. 두 가지다.
 #
-#   bash tools/install_schedule.sh          예약 걸기 (다시 걸어도 안전)
-#   bash tools/install_schedule.sh --remove 예약 지우기
+#   1. 갱신  — 6일마다 앱을 다시 설치한다 (무료 서명은 7일 뒤 만료)
+#   2. 감시  — 30초마다 공유 수신함을 보고, 지시가 있으면 바로 수행한다
 #
-# 무료 Apple 계정 서명은 7일 뒤 만료된다. Claude 는 클라우드에 있어서 이 Mac 의
-# Xcode·키체인·연결된 아이폰에 닿을 수 없다 — 그러니 Mac 이 스스로 하게 한다.
-# launchd 는 Mac 이 자고 있었으면 깨어난 뒤에 밀린 작업을 실행한다.
+#   bash tools/install_schedule.sh           둘 다 걸기 (다시 걸어도 안전)
+#   bash tools/install_schedule.sh --remove  둘 다 지우기
+#
+# Claude 는 클라우드에 있어서 이 Mac 의 Xcode·키체인·아이폰에 닿을 수 없다.
+# 그러니 Mac 이 스스로 하게 한다.
 
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 PROJECT_DIR="$(pwd)"
 
-BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'; OFF=$'\033[0m'
+BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; OFF=$'\033[0m'
 
-LABEL="com.assetbridge.refresh"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-INTERVAL=$((6 * 24 * 60 * 60))   # 6일. 7일 만료 하루 전에 갱신한다.
+AGENT_DIR="$HOME/Library/LaunchAgents"
+REFRESH_LABEL="com.assetbridge.refresh"
+WATCHER_LABEL="com.assetbridge.watcher"
 
 ok()   { printf '    %s✓%s %s\n' "$GREEN" "$OFF" "$1"; }
+warn() { printf '    %s!%s %s\n' "$YELLOW" "$OFF" "$1"; }
 note() { printf '      %s%s%s\n' "$DIM" "$1" "$OFF"; }
 die()  { printf '\n    %s✗%s %s\n\n' "$RED" "$OFF" "$1"; exit 1; }
 
 unload() {
-    # 최신 문법을 먼저, 안 되면 옛 문법으로. 둘 다 실패해도 진행한다
-    # (애초에 걸려 있지 않았다는 뜻이다).
-    launchctl bootout "gui/$UID/$LABEL" >/dev/null 2>&1 \
-        || launchctl unload "$PLIST" >/dev/null 2>&1 || true
+    launchctl bootout "gui/$UID/$1" >/dev/null 2>&1 \
+        || launchctl unload "$AGENT_DIR/$1.plist" >/dev/null 2>&1 || true
 }
 
 if [[ "${1:-}" == "--remove" ]]; then
-    unload
-    rm -f "$PLIST"
-    ok "예약을 지웠습니다."
+    for label in "$REFRESH_LABEL" "$WATCHER_LABEL"; do
+        unload "$label"
+        rm -f "$AGENT_DIR/$label.plist"
+    done
+    ok "예약을 모두 지웠습니다."
     note "앱은 그대로 있습니다. 만료되면 bash go.sh 로 직접 갱신하세요."
     exit 0
 fi
 
 [[ -f "$PROJECT_DIR/go.sh" ]] || die "go.sh 를 찾지 못했습니다: $PROJECT_DIR"
 
-mkdir -p "$HOME/Library/LaunchAgents"
+mkdir -p "$AGENT_DIR" "$HOME/Library/Logs/AssetBridge"
 
-# launchd 는 최소한의 PATH 만 준다. xcrun·git·python3 를 찾지 못하면 조용히 죽는다.
-cat > "$PLIST" <<PLIST_BODY
+# launchd 는 최소한의 PATH 만 준다. claude·xcrun·git 을 못 찾으면 조용히 죽는다.
+# claude 는 설치 방식마다 위치가 달라서, 지금 찾아 그 경로를 박아 둔다.
+AGENT_PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin"
+CLAUDE_BIN="$(command -v claude 2>/dev/null)"
+if [[ -n "$CLAUDE_BIN" ]]; then
+    AGENT_PATH="$(dirname "$CLAUDE_BIN"):$AGENT_PATH"
+else
+    warn "claude 를 찾지 못했습니다. 감시자가 지시를 수행하지 못할 수 있습니다."
+fi
+
+write_agent() {
+    # $1 라벨  $2 실행할 것(공백 구분)  $3 간격(초)
+    local label="$1" program="$2" interval="$3"
+    local args=""
+    for piece in $program; do
+        args+="		<string>$piece</string>
+"
+    done
+
+    cat > "$AGENT_DIR/$label.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>$LABEL</string>
+	<string>$label</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/bin/bash</string>
-		<string>$PROJECT_DIR/tools/scheduled_refresh.sh</string>
-	</array>
+$args	</array>
 	<key>WorkingDirectory</key>
 	<string>$PROJECT_DIR</string>
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>PATH</key>
-		<string>/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin</string>
+		<string>$AGENT_PATH</string>
 	</dict>
 	<key>StartInterval</key>
-	<integer>$INTERVAL</integer>
+	<integer>$interval</integer>
 	<key>RunAtLoad</key>
 	<false/>
 	<key>StandardOutPath</key>
-	<string>$HOME/Library/Logs/AssetBridge/launchd.out.log</string>
+	<string>$HOME/Library/Logs/AssetBridge/$label.out.log</string>
 	<key>StandardErrorPath</key>
-	<string>$HOME/Library/Logs/AssetBridge/launchd.err.log</string>
+	<string>$HOME/Library/Logs/AssetBridge/$label.err.log</string>
 </dict>
 </plist>
-PLIST_BODY
+PLIST
 
-mkdir -p "$HOME/Library/Logs/AssetBridge"
+    unload "$label"
+    if ! launchctl bootstrap "gui/$UID" "$AGENT_DIR/$label.plist" >/dev/null 2>&1; then
+        launchctl load -w "$AGENT_DIR/$label.plist" >/dev/null 2>&1 \
+            || die "예약을 걸지 못했습니다: $label"
+    fi
+}
 
-# 이미 걸려 있으면 새 내용으로 갈아 끼운다. 다시 실행해도 중복되지 않는다.
-unload
-if ! launchctl bootstrap "gui/$UID" "$PLIST" >/dev/null 2>&1; then
-    launchctl load -w "$PLIST" >/dev/null 2>&1 \
-        || die "예약을 걸지 못했습니다. plist: $PLIST"
-fi
+write_agent "$REFRESH_LABEL" "/bin/bash $PROJECT_DIR/tools/scheduled_refresh.sh" $((6 * 24 * 60 * 60))
+ok "갱신 — 6일마다 앱을 다시 설치합니다"
 
-ok "6일마다 자동 갱신하도록 걸었습니다."
-note "다음 실행: 지금부터 6일 뒤 (Mac 이 자고 있었으면 깨어난 직후)"
+write_agent "$WATCHER_LABEL" "/usr/bin/python3 $PROJECT_DIR/tools/inbox_watcher.py" 30
+ok "감시 — 30초마다 공유 수신함을 확인합니다"
+
 note "로그: ~/Library/Logs/AssetBridge/"
 note "지우기: bash tools/install_schedule.sh --remove"
 
 cat <<EOF
 
-${BOLD}자동 갱신이 되려면${OFF}
-  · Mac 이 켜져 있고 로그인돼 있어야 합니다 (잠자기는 괜찮습니다)
-  · 아이폰이 같은 Wi-Fi 에 있거나 케이블로 연결돼 있어야 합니다
-  · 실패하면 ${BOLD}알림${OFF}이 뜹니다 — 무엇이 필요한지 알림에 적힙니다
+${BOLD}이제 공유만 하면 알아서 됩니다${OFF}
+  카톡에서 공유 → AssetBridge → "캘린더에 넣어줘" → 보내기
+  ${DIM}30초 안에 Mac 이 집어 가서 수행하고, 끝나면 알림이 뜹니다.${OFF}
 
-  ${DIM}지금 바로 한 번 돌려 보려면:  bash tools/scheduled_refresh.sh${OFF}
+${BOLD}먼저 한 번 손으로 돌려 보세요${OFF}
+  ${BOLD}python3 tools/inbox_watcher.py${OFF}
+
+  무인 실행이라 claude 가 도구 승인을 물으면 그 자리에서 멈춥니다. 어떤 도구를
+  미리 허용해 둘지는 ${BOLD}직접 정하셔야 합니다${OFF} — 캘린더에 쓰는 것과 파일을 지우는
+  것은 다른 얘기이고, 그 선을 제가 대신 그을 수는 없습니다.
+
+  ${DIM}허용 목록은 프로젝트의 .claude/settings.json 에 둡니다. 손으로 돌려 봤을 때${OFF}
+  ${DIM}멈춘 도구 이름을 알려 주시면 그 항목만 넣어 드리겠습니다.${OFF}
 
 EOF
