@@ -138,6 +138,20 @@ ASSETBRIDGE_BUNDLE_ID = com.내이름.assetbridge
 ASSETBRIDGE_TEAM_ID = ABCDE12345
 ```
 
+Apple 계정을 바꾸면 이 번들 ID 를 새 팀이 못 쓰는 경우가 있습니다 — 무료 계정에서
+한 번 등록한 App ID 는 그 팀의 것이 되기 때문입니다. 누가 그 이름을 가졌는지는
+이 Mac 에 내려와 있는 프로비저닝 프로파일에 적혀 있으므로(`application-identifier`),
+`run-device.sh` 가 **빌드 전에** 확인해서 필요하면 팀 ID 를 붙인 이름으로 바꿉니다.
+팀마다 고정된 이름이라 다시 돌려도 같은 값이고, 무료 계정의 App ID 주당 10개 한도를
+헛되이 태우지 않습니다.
+
+```bash
+python3 tools/bundle_id.py com.내이름.assetbridge ABCDE12345   # 무슨 이름을 고를지 미리 보기
+```
+
+다른 Mac 에서 등록한 App ID 는 여기 프로파일에 없어서 미리 알 수 없습니다. 그때는
+빌드가 한 번 실패하고, 그 실패를 보고 이름을 바꿔 자동으로 다시 빌드합니다.
+
 ---
 
 ## 연결
@@ -251,7 +265,11 @@ HealthKit(건강 데이터)은 기술적으로 가능하지만 별도 entitlemen
 ├── AssetBridge-Info.plist      권한 문구와 번들 설정
 ├── Config/Base.xcconfig        서명 값의 기본값 + Local.xcconfig 선택 include
 ├── tools/
-│   └── generate_xcodeproj.py   소스 추가 시 프로젝트 재생성 (자체 검증 포함)
+│   ├── generate_xcodeproj.py   소스 추가 시 프로젝트 재생성 (자체 검증 포함)
+│   ├── bundle_id.py            이 팀으로 쓸 수 있는 번들 ID 를 빌드 전에 결정
+│   ├── inbox_watcher.py        공유 수신함을 보고 지시를 수행 (launchd 가 30초마다)
+│   ├── ask_channel.py          폰으로 묻고 답을 기다린다 (텔레그램)
+│   └── ask_mcp.py              그 되묻기를 claude 에게 도구로 물려주는 작은 MCP 서버
 └── Sources/
     ├── App/        AssetBridgeApp, AppState, ContentView, AudioKeepAlive
     ├── Server/     HTTPServer / HTTPConnection / HTTPTypes (Network.framework, 의존성 0)
@@ -295,6 +313,49 @@ bash tools/install_schedule.sh --remove   # 지우기
 무인 실행이라 claude 가 도구 승인을 물으면 멈춥니다. 어떤 도구를 미리 허용할지는
 `.claude/settings.json` 의 permissions 에서 정하세요 — 캘린더에 쓰는 것과 파일을
 지우는 것은 다른 얘기라, 기본값으로 열어 두지 않았습니다.
+
+한 번 처리가 30초를 넘겨도 겹쳐 돌지 않습니다. 감시자는 시작할 때 `flock` 으로
+잠금을 쥐고, 이미 돌고 있으면 조용히 물러납니다.
+
+## 애매하면 폰으로 물어보기
+
+공유한 글에 "3시" 라고만 적혀 있으면 오늘인지 내일인지 알 수 없습니다. 지금까지는
+둘 중 하나였습니다 — 찍어서 넣거나, 포기하거나. 텔레그램 봇을 하나 붙여 두면
+**폰으로 물어보고 답을 기다립니다.**
+
+```bash
+bash tools/setup_telegram.sh            # 한 번만 (봇 토큰을 붙여넣으면 나머지는 자동)
+bash tools/setup_telegram.sh --check    # 상태 확인
+bash tools/setup_telegram.sh --remove   # 다시 안 묻게 하기
+```
+
+설정하고 나면 감시자가 `claude -p` 를 부를 때 되묻기 도구 두 개를 붙여 줍니다.
+
+| 도구 | 하는 일 |
+|---|---|
+| `ask_user(question, choices?)` | 폰에 질문을 보내고 답을 기다립니다. `choices` 를 주면 버튼으로 뜹니다 |
+| `tell_user(message)` | 답이 필요 없는 소식만 보냅니다 |
+
+기본 4분까지 기다리고, 답이 없으면 **되돌릴 수 있는 쪽으로** 진행한 뒤 무엇을
+가정했는지 폰으로 알립니다. 처리 결과 알림도 Mac 알림과 함께 폰으로 갑니다 —
+이 기능을 쓰는 상황이 곧 Mac 앞에 없는 상황이라서입니다.
+
+**왜 텔레그램인가.** 슬랙은 워크스페이스와 앱 등록에 Socket Mode 나 공개 이벤트
+URL 이 필요하고, 디스코드는 웹훅이 보내기 전용이라 답장을 읽으려면 봇과 게이트웨이
+웹소켓이 필요합니다. 텔레그램은 `getUpdates` 롱폴링이라 NAT 안쪽 Mac 에서 공개 주소
+없이 그냥 되고, 봇 만들기가 2분입니다. 받는 쪽 경험(폰 알림 → 거기서 답장)은 셋 다
+같습니다.
+
+토큰은 `~/Library/Application Support/AssetBridge/telegram.json` 에 권한 600 으로
+저장합니다. 질문을 보내기 직전에 밀린 메시지를 모두 읽은 것으로 넘겨서, 어제 보낸
+"ㅇㅇ" 이 오늘 질문의 답으로 둔갑하지 않습니다. 설정된 대화에서 온 메시지만 답으로
+받습니다 — 봇에게는 누구나 말을 걸 수 있습니다.
+
+터미널에서 직접 써 볼 수도 있습니다.
+
+```bash
+python3 tools/ask_channel.py --ask "지금 나갈까요?" --choice 네 --choice 조금뒤
+```
 
 ## 어디서나 붙기
 

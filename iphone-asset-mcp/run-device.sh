@@ -343,10 +343,41 @@ step "빌드 및 서명 (처음에는 1~2분 걸립니다)"
 #   ASSETBRIDGE_BUNDLE_ID=com.내이름.assetbridge2 bash go.sh
 #
 # 명령줄로 준 빌드 설정은 xcconfig 보다 우선하므로 파일을 고칠 필요가 없다.
+# 기본 이름은 설정 파일에서 읽는다. Base 가 Local 을 include 하므로 나중에 읽은
+# Local 이 이긴다 — 순서가 곧 우선순위다.
+read_bundle_base() {
+    local value=""
+    for config in Config/Base.xcconfig Config/Local.xcconfig; do
+        [[ -f "$config" ]] || continue
+        local line
+        line="$(grep -E '^ASSETBRIDGE_BUNDLE_ID' "$config" \
+            | sed -E 's/.*=[[:space:]]*//' | tr -d '[:space:]')"
+        [[ -n "$line" ]] && value="$line"
+    done
+    printf '%s' "${value:-com.example.assetbridge}"
+}
+
 EXTRA_SETTINGS=()
+BASE_BUNDLE="$(read_bundle_base)"
+PICKED_BUNDLE=""
+
 if [[ -n "${ASSETBRIDGE_BUNDLE_ID:-}" ]]; then
-    EXTRA_SETTINGS+=("ASSETBRIDGE_BUNDLE_ID=$ASSETBRIDGE_BUNDLE_ID")
-    ok "번들 ID $ASSETBRIDGE_BUNDLE_ID (ASSETBRIDGE_BUNDLE_ID 로 지정됨)"
+    PICKED_BUNDLE="$ASSETBRIDGE_BUNDLE_ID"
+    EXTRA_SETTINGS+=("ASSETBRIDGE_BUNDLE_ID=$PICKED_BUNDLE")
+    ok "번들 ID $PICKED_BUNDLE (ASSETBRIDGE_BUNDLE_ID 로 지정됨)"
+else
+    # 빌드해 보고 나서야 아는 게 아니라, 지금 정한다. 이 팀이 그 이름을 쓸 수
+    # 있는지는 이미 받아 둔 프로비저닝 프로파일에 적혀 있다.
+    BUNDLE_PICK="$(python3 tools/bundle_id.py "$BASE_BUNDLE" "$TEAM_ID" 2>>"$LOG")"
+    BUNDLE_CHOICE="$(printf '%s\n' "$BUNDLE_PICK" | sed -n '1p')"
+    BUNDLE_REASON="$(printf '%s\n' "$BUNDLE_PICK" | sed -n '2p')"
+
+    if [[ -n "$BUNDLE_CHOICE" && "$BUNDLE_CHOICE" != "$BASE_BUNDLE" ]]; then
+        PICKED_BUNDLE="$BUNDLE_CHOICE"
+        EXTRA_SETTINGS+=("ASSETBRIDGE_BUNDLE_ID=$PICKED_BUNDLE")
+        ok "번들 ID $PICKED_BUNDLE"
+        [[ -n "$BUNDLE_REASON" ]] && note "$BUNDLE_REASON"
+    fi
 fi
 
 run_build() {
@@ -385,22 +416,17 @@ fi
 #
 # 팀 ID 를 붙여 만든다 — 팀마다 고정이라 다시 돌려도 같은 값이 나온다. 무료 계정은
 # App ID 를 7일에 10개까지만 만들 수 있어서, 매번 다른 이름을 지으면 그 한도를 태운다.
-if (( BUILD_STATUS != 0 )) && [[ -z "${ASSETBRIDGE_BUNDLE_ID:-}" ]] \
+if (( BUILD_STATUS != 0 )) && [[ -z "$PICKED_BUNDLE" ]] \
         && { [[ "$BUILD_OUTPUT" == *"Failed Registering Bundle Identifier"* ]] \
           || [[ "$BUILD_OUTPUT" == *"Failed to register bundle identifier"* ]] \
           || [[ "$BUILD_OUTPUT" == *"cannot be registered to your development team"* ]]; }; then
 
-    BASE_BUNDLE=""
-    if [[ -f Config/Local.xcconfig ]]; then
-        BASE_BUNDLE="$(grep -E '^ASSETBRIDGE_BUNDLE_ID' Config/Local.xcconfig \
-            | sed -E 's/.*=[[:space:]]*//' | tr -d '[:space:]')"
-    fi
-    [[ -n "$BASE_BUNDLE" ]] || BASE_BUNDLE="com.example.assetbridge"
-
     SUFFIXED="${BASE_BUNDLE}.$(printf '%s' "$TEAM_ID" | tr '[:upper:]' '[:lower:]')"
     warn "번들 ID $BASE_BUNDLE 는 다른 팀이 이미 가져갔습니다."
+    note "이 Mac 의 프로파일에는 그 흔적이 없어 미리 알지 못했습니다."
     note "$SUFFIXED 로 바꿔 다시 시도합니다. 팀마다 고정된 이름이라 다음에도 같습니다."
 
+    PICKED_BUNDLE="$SUFFIXED"
     EXTRA_SETTINGS+=("ASSETBRIDGE_BUNDLE_ID=$SUFFIXED")
     BUILD_OUTPUT="$(run_build)"
     BUILD_STATUS=$?

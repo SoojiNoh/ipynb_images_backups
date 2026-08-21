@@ -110,6 +110,15 @@ ok "감시 — 30초마다 공유 수신함을 확인합니다"
 note "로그: ~/Library/Logs/AssetBridge/"
 note "지우기: bash tools/install_schedule.sh --remove"
 
+# 되묻기 통로가 있으면 알려 준다. 있는 줄 알았는데 없는 것이 제일 나쁘다.
+TELEGRAM_CONFIG="$HOME/Library/Application Support/AssetBridge/telegram.json"
+if [[ -f "$TELEGRAM_CONFIG" ]] && CHANNEL="$(python3 tools/ask_channel.py --check 2>&1)"; then
+    ok "되묻기 — 애매하면 폰으로 물어봅니다 ($CHANNEL)"
+else
+    warn "되묻기 통로가 없습니다. 애매해도 묻지 않고 알아서 판단합니다."
+    note "폰으로 물어보게 하려면: bash tools/setup_telegram.sh"
+fi
+
 cat <<EOF
 
 ${BOLD}이제 공유만 하면 알아서 됩니다${OFF}
