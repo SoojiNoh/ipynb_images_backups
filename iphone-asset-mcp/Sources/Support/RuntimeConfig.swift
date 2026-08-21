@@ -13,7 +13,8 @@ final class RuntimeConfig {
         static let port = "server.port"
         static let lanOnly = "server.lanOnly"
         static let allowWrites = "server.allowWrites"
-        static let enabledDomains = "server.enabledDomains"
+        static let enabledDomains = "server.enabledDomains"      // 옛 형식. 읽기만 한다.
+        static let disabledDomains = "server.disabledDomains"
         static let keepAwake = "server.keepAwake"
         static let backgroundAudio = "server.backgroundAudio"
         static let acceptShares = "server.acceptShares"
@@ -60,10 +61,28 @@ final class RuntimeConfig {
         _acceptShares = defaults.bool(forKey: Key.acceptShares)
         _autoStart = defaults.bool(forKey: Key.autoStart)
 
-        if let saved = defaults.stringArray(forKey: Key.enabledDomains) {
-            _enabledDomains = Set(saved)
+        // 끈 것을 저장한다. 켠 것을 저장하면 나중에 도메인을 추가할 때마다
+        // 기존 설치본에서 그 도메인이 조용히 빠진다 — 사용자는 끈 적도 없는데
+        // 도구가 보이지 않고, 어디를 봐야 할지도 알 수 없다.
+        let all = Set(ToolDomain.allCases.map(\.rawValue))
+
+        if let disabled = defaults.stringArray(forKey: Key.disabledDomains) {
+            _enabledDomains = all.subtracting(disabled)
+        } else if let legacy = defaults.stringArray(forKey: Key.enabledDomains) {
+            // 옛 형식을 한 번만 옮긴다.
+            //
+            // 옛 목록에 없다고 전부 "사용자가 껐다" 로 볼 수는 없다. 그 목록이
+            // 저장된 뒤에 생긴 도메인도 똑같이 없기 때문이다. 그래서 그 시절에
+            // 존재했던 도메인만 후보로 놓고, 그중 빠진 것만 꺼진 것으로 옮긴다.
+            let legacySchema: Set<String> = [
+                "photos", "contacts", "calendar", "reminders", "location",
+                "device", "motion", "clipboard", "music", "files"
+            ]
+            let disabled = Array(legacySchema.subtracting(legacy))
+            defaults.set(disabled, forKey: Key.disabledDomains)
+            _enabledDomains = all.subtracting(disabled)
         } else {
-            _enabledDomains = Set(ToolDomain.allCases.map(\.rawValue))
+            _enabledDomains = all
         }
     }
 
@@ -157,9 +176,9 @@ final class RuntimeConfig {
     func setEnabled(_ enabled: Bool, for domain: ToolDomain) {
         lock.lock()
         if enabled { _enabledDomains.insert(domain.rawValue) } else { _enabledDomains.remove(domain.rawValue) }
-        let snapshot = Array(_enabledDomains)
+        let disabled = Array(Set(ToolDomain.allCases.map(\.rawValue)).subtracting(_enabledDomains))
         lock.unlock()
-        defaults.set(snapshot, forKey: Key.enabledDomains)
+        defaults.set(disabled, forKey: Key.disabledDomains)
     }
 }
 
