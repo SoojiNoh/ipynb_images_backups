@@ -209,7 +209,7 @@ enum ToolDomain: String, CaseIterable, Identifiable {
         case .clipboard: return "클립보드"
         case .music: return "음악 보관함"
         case .files: return "파일"
-        case .inbox: return "공유 받은 항목"
+        case .inbox: return "공유 시트 수신함"
         }
     }
 

@@ -13,10 +13,13 @@ final class InboxProvider: ToolProvider {
         [
             MCPTool(
                 name: "inbox_list",
-                title: "공유 받은 항목 목록",
+                title: "아이폰 공유 수신함 목록",
                 description: """
-                    사용자가 공유 시트로 AssetBridge 에 보낸 항목을 최근 순으로 봅니다. \
-                    카카오톡·사파리·메모 등 어떤 앱에서 보냈든 여기 모입니다. \
+                    **아이폰 기기 안**의 AssetBridge 수신함을 봅니다. iOS 공유 시트에서 \
+                    'AssetBridge' 로 보낸 항목만 들어 있습니다 — 카카오톡·사파리·메모 등 \
+                    어떤 앱에서 보냈든 여기 모입니다. \
+                    Google Drive·Notion·Slack·아티팩트 등 온라인 서비스의 '공유'와는 \
+                    전혀 관계가 없습니다. \
                     긴 텍스트는 잘려 나오므로, 전문이 필요하면 inbox_read 를 쓰세요.
                     """,
                 inputSchema: Schema.object([
@@ -26,8 +29,8 @@ final class InboxProvider: ToolProvider {
             ),
             MCPTool(
                 name: "inbox_read",
-                title: "공유 받은 항목 읽기",
-                description: "id 로 항목 하나를 전문/원본으로 읽습니다. 이미지는 그림으로 돌려줍니다.",
+                title: "아이폰 공유 수신함 읽기",
+                description: "아이폰 공유 수신함의 항목 하나를 id 로 전문/원본으로 읽습니다. 이미지는 그림으로 돌려줍니다.",
                 inputSchema: Schema.object([
                     "id": Schema.string("inbox_list 가 준 id")
                 ], required: ["id"]),
@@ -35,8 +38,8 @@ final class InboxProvider: ToolProvider {
             ),
             MCPTool(
                 name: "inbox_clear",
-                title: "공유 받은 항목 지우기",
-                description: "id 를 주면 그 항목만, 생략하면 전부 지웁니다.",
+                title: "아이폰 공유 수신함 비우기",
+                description: "아이폰 공유 수신함을 비웁니다. id 를 주면 그 항목만, 생략하면 전부.",
                 inputSchema: Schema.object([
                     "id": Schema.string("지울 항목의 id. 생략하면 전체 삭제.")
                 ]),
