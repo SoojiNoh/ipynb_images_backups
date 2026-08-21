@@ -104,15 +104,30 @@ PULLED="${TMPDIR:-/tmp}/assetbridge-connection.json"
 rm -f "$PULLED"
 COPY_OUTPUT=""
 
+# 데이터 컨테이너를 지정하면 devicectl 이 사용자 이름을 함께 요구한다:
+#
+#   Error: If you are targeting a data container, you must specify a username.
+#
+# iOS 에서 앱이 도는 사용자는 mobile(uid 501)이다. 어느 표기를 받는지는 Xcode
+# 버전마다 다르고, 아예 이 옵션이 없던 버전도 있어서 세 가지를 다 시도한다.
+copy_connection() {
+    local user="$1"
+    local args=(device copy from
+        --device "$DEVICE_ID"
+        --domain-type appDataContainer
+        --domain-identifier "$BUNDLE_ID"
+        --source "Library/Application Support/connection.json"
+        --destination "$PULLED")
+    [[ -n "$user" ]] && args+=(--user "$user")
+    xcrun devicectl "${args[@]}" 2>&1
+}
+
 for _ in 1 2 3 4 5 6; do
-    COPY_OUTPUT="$(xcrun devicectl device copy from \
-        --device "$DEVICE_ID" \
-        --domain-type appDataContainer \
-        --domain-identifier "$BUNDLE_ID" \
-        --source "Library/Application Support/connection.json" \
-        --destination "$PULLED" 2>&1)"
-    printf '%s\n' "$COPY_OUTPUT" >> "$LOG"
-    [[ -s "$PULLED" ]] && break
+    for candidate in mobile 501 ""; do
+        COPY_OUTPUT="$(copy_connection "$candidate")"
+        printf '%s\n' "$COPY_OUTPUT" >> "$LOG"
+        [[ -s "$PULLED" ]] && break 2
+    done
     sleep 2
 done
 
