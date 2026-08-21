@@ -81,7 +81,7 @@ struct ContentView: View {
         } header: {
             Text("서버")
         } footer: {
-            Text("서버는 앱이 화면에 떠 있는 동안만 확실히 동작합니다. 잠금 화면에서도 유지하려면 아래 '백그라운드 유지'를 켜세요.")
+            Text("'백그라운드 유지'가 켜져 있으면 홈으로 나가거나 화면을 잠가도 서버가 계속 돕니다. 앱을 위로 쓸어 종료하면 멈춥니다.")
         }
     }
 
@@ -232,7 +232,7 @@ struct ContentView: View {
     // MARK: - Settings
 
     private var settingsSection: some View {
-        Section("설정") {
+        Section {
             Stepper(value: $state.port, in: 1024...65535, step: 1) {
                 LabeledContent("포트") { Text("\(state.port)").monospaced() }
             }
@@ -243,6 +243,10 @@ struct ContentView: View {
             Toggle("사설망에서만 접속 허용", isOn: $state.lanOnly)
             Toggle("화면 꺼짐 방지", isOn: $state.keepAwake)
             Toggle("백그라운드 유지 (무음 오디오)", isOn: $state.backgroundAudio)
+        } header: {
+            Text("설정")
+        } footer: {
+            Text("백그라운드 유지는 볼륨 0 오디오를 재생해 앱을 살려 둡니다. 듣던 음악은 끊기지 않고, 배터리를 조금 더 씁니다. 전화나 Siri 로 끊기면 스스로 다시 붙습니다.")
         }
     }
 

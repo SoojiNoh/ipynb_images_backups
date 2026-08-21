@@ -43,7 +43,9 @@ final class RuntimeConfig {
             Key.lanOnly: true,
             Key.allowWrites: true,
             Key.keepAwake: true,
-            Key.backgroundAudio: false,
+            // 앱을 띄워 둬야만 도는 서버는 쓸모가 반이다. 기본으로 켠다.
+            // 무음이고 mixWithOthers 라 듣던 음악을 끊지 않는다. 끄고 싶으면 설정에서.
+            Key.backgroundAudio: true,
             Key.autoStart: true
         ])
 
