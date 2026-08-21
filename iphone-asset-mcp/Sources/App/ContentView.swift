@@ -71,6 +71,19 @@ struct ContentView: View {
             }
             .padding(.vertical, 4)
 
+            // 서버가 언제 죽는지를 정하는 스위치다. 저 아래 '설정' 에 묻어 두면
+            // 정작 필요한 사람이 못 찾는다. 상태 바로 옆이 제자리다.
+            Toggle(isOn: $state.backgroundAudio) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("백그라운드 유지")
+                    Text(state.backgroundAudio
+                         ? "화면을 잠가도 계속 돕니다"
+                         : "앱을 띄워 둔 동안에만 돕니다")
+                        .font(.caption2)
+                        .foregroundStyle(state.backgroundAudio ? .green : .orange)
+                }
+            }
+
             if state.isRunning {
                 ForEach(state.addresses, id: \.ip) { interface in
                     LabeledContent(interface.isWiFi ? "Wi-Fi" : interface.name) {
@@ -81,7 +94,7 @@ struct ContentView: View {
         } header: {
             Text("서버")
         } footer: {
-            Text("'백그라운드 유지'가 켜져 있으면 홈으로 나가거나 화면을 잠가도 서버가 계속 돕니다. 앱을 위로 쓸어 종료하면 멈춥니다.")
+            Text("백그라운드 유지는 볼륨 0 오디오로 앱을 살려 둡니다 — 듣던 음악은 끊기지 않습니다. 앱을 위로 쓸어 종료하면 멈춥니다.")
         }
     }
 
@@ -242,11 +255,10 @@ struct ContentView: View {
             Toggle("쓰기 도구 허용", isOn: $state.allowWrites)
             Toggle("사설망에서만 접속 허용", isOn: $state.lanOnly)
             Toggle("화면 꺼짐 방지", isOn: $state.keepAwake)
-            Toggle("백그라운드 유지 (무음 오디오)", isOn: $state.backgroundAudio)
         } header: {
             Text("설정")
         } footer: {
-            Text("백그라운드 유지는 볼륨 0 오디오를 재생해 앱을 살려 둡니다. 듣던 음악은 끊기지 않고, 배터리를 조금 더 씁니다. 전화나 Siri 로 끊기면 스스로 다시 붙습니다.")
+            Text("백그라운드 유지 스위치는 맨 위 '서버' 칸에 있습니다.")
         }
     }
 
