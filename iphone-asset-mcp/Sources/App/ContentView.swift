@@ -255,10 +255,11 @@ struct ContentView: View {
             Toggle("쓰기 도구 허용", isOn: $state.allowWrites)
             Toggle("사설망에서만 접속 허용", isOn: $state.lanOnly)
             Toggle("화면 꺼짐 방지", isOn: $state.keepAwake)
+            Toggle("공유 시트로 받기", isOn: $state.acceptShares)
         } header: {
             Text("설정")
         } footer: {
-            Text("백그라운드 유지 스위치는 맨 위 '서버' 칸에 있습니다.")
+            Text("공유 시트로 받기를 켜면 다른 앱에서 '공유 → AssetBridge' 로 보낸 내용을 Claude 가 읽습니다. 같은 기기 안에서만 열리는 통로입니다. 백그라운드 유지 스위치는 맨 위 '서버' 칸에 있습니다.")
         }
     }
 

@@ -20,6 +20,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT_NAME = "AssetBridge"
+EXTENSION_NAME = "AssetBridgeShare"
+EXTENSION_DIR = "ShareExtension"
 BUNDLE_ID_DEFAULT = "com.example.assetbridge"
 DEPLOYMENT_TARGET = "17.0"
 SWIFT_VERSION = "5.0"
@@ -71,6 +73,14 @@ def collect_sources() -> dict[str, list[Path]]:
     return groups
 
 
+def collect_extension_sources() -> list[Path]:
+    """공유 익스텐션 소스. 앱 타겟과 섞이면 안 되므로 Sources/ 밖에 둔다."""
+    directory = ROOT / EXTENSION_DIR
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("*.swift"))
+
+
 # --- 빌드 설정 -------------------------------------------------------------
 
 PROJECT_COMMON = {
@@ -118,6 +128,7 @@ PROJECT_RELEASE = {
 }
 
 TARGET_COMMON = {
+    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
     "CODE_SIGN_STYLE": "Automatic",
     "CURRENT_PROJECT_VERSION": "1",
     "ENABLE_PREVIEWS": "YES",
@@ -132,8 +143,31 @@ TARGET_COMMON = {
 }
 
 
+# 익스텐션은 앱과 번들 ID 가 달라야 한다. Base.xcconfig 가 프로젝트 수준에서
+# PRODUCT_BUNDLE_IDENTIFIER 를 앱 것으로 깔아 두므로 여기서 덮어쓴다.
+EXTENSION_TARGET = {
+    "CODE_SIGN_STYLE": "Automatic",
+    "CURRENT_PROJECT_VERSION": "1",
+    "GENERATE_INFOPLIST_FILE": "NO",
+    "INFOPLIST_FILE": f"{EXTENSION_DIR}/Info.plist",
+    "LD_RUNPATH_SEARCH_PATHS": [
+        "$(inherited)",
+        "@executable_path/Frameworks",
+        "@executable_path/../../Frameworks",
+    ],
+    "MARKETING_VERSION": "1.0",
+    "PRODUCT_BUNDLE_IDENTIFIER": "$(ASSETBRIDGE_BUNDLE_ID).share",
+    "PRODUCT_NAME": "$(TARGET_NAME)",
+    "SKIP_INSTALL": "YES",
+    "SWIFT_EMIT_LOC_STRINGS": "NO",
+    "SWIFT_VERSION": SWIFT_VERSION,
+    "TARGETED_DEVICE_FAMILY": "1,2",
+}
+
+
 def build() -> str:
     groups = collect_sources()
+    ext_sources = collect_extension_sources()
     objects: list[str] = []
 
     # 파일 참조와 빌드 파일
@@ -146,15 +180,37 @@ def build() -> str:
             file_refs[path] = ref
             build_files.append((oid(f"build:{path.relative_to(ROOT)}"), ref, path.name))
 
+    ext_build_files: list[tuple[str, str, str]] = []
+    for path in ext_sources:
+        ref = oid(f"ref:{path.relative_to(ROOT)}")
+        file_refs[path] = ref
+        ext_build_files.append((oid(f"build:{path.relative_to(ROOT)}"), ref, path.name))
+
     product_ref = oid("ref:product")
     plist_ref = oid("ref:infoplist")
     xcconfig_ref = oid("ref:xcconfig")
+    assets_ref = oid("ref:assets")
+    assets_build = oid("build:assets")
+    ext_product_ref = oid("ref:ext-product")
+    ext_plist_ref = oid("ref:ext-infoplist")
+    embed_build = oid("build:embed-appex")
 
     section = ["/* Begin PBXBuildFile section */"]
-    for build_id, ref, name in sorted(build_files, key=lambda item: item[2]):
+    for build_id, ref, name in sorted(build_files + ext_build_files, key=lambda item: item[2]):
         section.append(
             f"\t\t{build_id} /* {name} in Sources */ = "
             f"{{isa = PBXBuildFile; fileRef = {ref} /* {name} */; }};"
+        )
+    section.append(
+        f"\t\t{assets_build} /* Assets.xcassets in Resources */ = "
+        f"{{isa = PBXBuildFile; fileRef = {assets_ref} /* Assets.xcassets */; }};"
+    )
+    if ext_sources:
+        # RemoveHeadersOnCopy 가 없으면 Xcode 가 검증 단계에서 경고를 낸다.
+        section.append(
+            f"\t\t{embed_build} /* {EXTENSION_NAME}.appex in Embed Foundation Extensions */ = "
+            f"{{isa = PBXBuildFile; fileRef = {ext_product_ref} /* {EXTENSION_NAME}.appex */; "
+            f"settings = {{ATTRIBUTES = (RemoveHeadersOnCopy, ); }}; }};"
         )
     section.append("/* End PBXBuildFile section */")
     objects.append("\n".join(section))
@@ -174,6 +230,20 @@ def build() -> str:
         f"\t\t{xcconfig_ref} /* Base.xcconfig */ = {{isa = PBXFileReference; "
         f'lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; }};'
     )
+    section.append(
+        f"\t\t{assets_ref} /* Assets.xcassets */ = {{isa = PBXFileReference; "
+        f'lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; }};'
+    )
+    if ext_sources:
+        section.append(
+            f"\t\t{ext_product_ref} /* {EXTENSION_NAME}.appex */ = {{isa = PBXFileReference; "
+            f"explicitFileType = \"wrapper.app-extension\"; includeInIndex = 0; "
+            f"path = {EXTENSION_NAME}.appex; sourceTree = BUILT_PRODUCTS_DIR; }};"
+        )
+        section.append(
+            f"\t\t{ext_plist_ref} /* Info.plist */ = {{isa = PBXFileReference; "
+            f'lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; }};'
+        )
     for path in sorted(file_refs, key=lambda p: p.name):
         section.append(
             f"\t\t{file_refs[path]} /* {path.name} */ = {{isa = PBXFileReference; "
@@ -183,16 +253,44 @@ def build() -> str:
     objects.append("\n".join(section))
 
     frameworks_phase = oid("phase:frameworks")
-    objects.append(
-        "/* Begin PBXFrameworksBuildPhase section */\n"
-        f"\t\t{frameworks_phase} /* Frameworks */ = {{\n"
-        "\t\t\tisa = PBXFrameworksBuildPhase;\n"
-        "\t\t\tbuildActionMask = 2147483647;\n"
-        "\t\t\tfiles = (\n\t\t\t);\n"
-        "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
-        "\t\t};\n"
-        "/* End PBXFrameworksBuildPhase section */"
-    )
+    ext_frameworks_phase = oid("phase:ext-frameworks")
+
+    def empty_phase(phase_id: str, isa: str, label: str) -> str:
+        return (
+            f"\t\t{phase_id} /* {label} */ = {{\n"
+            f"\t\t\tisa = {isa};\n"
+            "\t\t\tbuildActionMask = 2147483647;\n"
+            "\t\t\tfiles = (\n\t\t\t);\n"
+            "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
+            "\t\t};"
+        )
+
+    section = ["/* Begin PBXFrameworksBuildPhase section */"]
+    section.append(empty_phase(frameworks_phase, "PBXFrameworksBuildPhase", "Frameworks"))
+    if ext_sources:
+        section.append(empty_phase(ext_frameworks_phase, "PBXFrameworksBuildPhase", "Frameworks"))
+    section.append("/* End PBXFrameworksBuildPhase section */")
+    objects.append("\n".join(section))
+
+    # 앱 번들 안 PlugIns/ 로 appex 를 복사하는 단계. 이게 없으면 익스텐션이
+    # 빌드는 되지만 앱에 실리지 않아 공유 시트에 나타나지 않는다.
+    embed_phase = oid("phase:embed")
+    if ext_sources:
+        objects.append(
+            "/* Begin PBXCopyFilesBuildPhase section */\n"
+            f"\t\t{embed_phase} /* Embed Foundation Extensions */ = {{\n"
+            "\t\t\tisa = PBXCopyFilesBuildPhase;\n"
+            "\t\t\tbuildActionMask = 2147483647;\n"
+            '\t\t\tdstPath = "";\n'
+            "\t\t\tdstSubfolderSpec = 13;\n"
+            "\t\t\tfiles = (\n"
+            f"\t\t\t\t{embed_build} /* {EXTENSION_NAME}.appex in Embed Foundation Extensions */,\n"
+            "\t\t\t);\n"
+            '\t\t\tname = "Embed Foundation Extensions";\n'
+            "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
+            "\t\t};\n"
+            "/* End PBXCopyFilesBuildPhase section */"
+        )
 
     # 그룹 트리
     root_group = oid("group:root")
@@ -202,9 +300,14 @@ def build() -> str:
 
     section = ["/* Begin PBXGroup section */"]
 
-    children = [
-        f"{sources_group} /* Sources */",
+    ext_group = oid("group:ShareExtension")
+
+    children = [f"{sources_group} /* Sources */"]
+    if ext_sources:
+        children.append(f"{ext_group} /* {EXTENSION_DIR} */")
+    children += [
         f"{config_group} /* Config */",
+        f"{assets_ref} /* Assets.xcassets */",
         f"{plist_ref} /* {PROJECT_NAME}-Info.plist */",
         f"{products_group} /* Products */",
     ]
@@ -247,6 +350,22 @@ def build() -> str:
             "\t\t};"
         )
 
+    if ext_sources:
+        section.append(
+            f"\t\t{ext_group} /* {EXTENSION_DIR} */ = {{\n"
+            "\t\t\tisa = PBXGroup;\n"
+            "\t\t\tchildren = (\n"
+            + "".join(
+                f"\t\t\t\t{file_refs[path]} /* {path.name} */,\n"
+                for path in sorted(ext_sources, key=lambda p: p.name)
+            )
+            + f"\t\t\t\t{ext_plist_ref} /* Info.plist */,\n"
+            "\t\t\t);\n"
+            f"\t\t\tpath = {EXTENSION_DIR};\n"
+            '\t\t\tsourceTree = "<group>";\n'
+            "\t\t};"
+        )
+
     section.append(
         f"\t\t{config_group} /* Config */ = {{\n"
         "\t\t\tisa = PBXGroup;\n"
@@ -263,7 +382,8 @@ def build() -> str:
         "\t\t\tisa = PBXGroup;\n"
         "\t\t\tchildren = (\n"
         f"\t\t\t\t{product_ref} /* {PROJECT_NAME}.app */,\n"
-        "\t\t\t);\n"
+        + (f"\t\t\t\t{ext_product_ref} /* {EXTENSION_NAME}.appex */,\n" if ext_sources else "")
+        + "\t\t\t);\n"
         "\t\t\tname = Products;\n"
         '\t\t\tsourceTree = "<group>";\n'
         "\t\t};"
@@ -273,9 +393,15 @@ def build() -> str:
 
     # 타겟
     target_id = oid("target:app")
+    ext_target_id = oid("target:ext")
+    dependency_id = oid("dependency:ext")
+    proxy_id = oid("proxy:ext")
     sources_phase = oid("phase:sources")
+    ext_sources_phase = oid("phase:ext-sources")
     resources_phase = oid("phase:resources")
+    ext_resources_phase = oid("phase:ext-resources")
     target_config_list = oid("configlist:target")
+    ext_config_list = oid("configlist:ext")
     project_config_list = oid("configlist:project")
     project_id = oid("project:root")
 
@@ -288,16 +414,60 @@ def build() -> str:
         f"\t\t\t\t{sources_phase} /* Sources */,\n"
         f"\t\t\t\t{frameworks_phase} /* Frameworks */,\n"
         f"\t\t\t\t{resources_phase} /* Resources */,\n"
-        "\t\t\t);\n"
+        + (f"\t\t\t\t{embed_phase} /* Embed Foundation Extensions */,\n" if ext_sources else "")
+        + "\t\t\t);\n"
         "\t\t\tbuildRules = (\n\t\t\t);\n"
-        "\t\t\tdependencies = (\n\t\t\t);\n"
+        "\t\t\tdependencies = (\n"
+        + (f"\t\t\t\t{dependency_id} /* PBXTargetDependency */,\n" if ext_sources else "")
+        + "\t\t\t);\n"
         f"\t\t\tname = {PROJECT_NAME};\n"
         f"\t\t\tproductName = {PROJECT_NAME};\n"
         f"\t\t\tproductReference = {product_ref} /* {PROJECT_NAME}.app */;\n"
         '\t\t\tproductType = "com.apple.product-type.application";\n'
         "\t\t};\n"
-        "/* End PBXNativeTarget section */"
+        + (
+            f"\t\t{ext_target_id} /* {EXTENSION_NAME} */ = {{\n"
+            "\t\t\tisa = PBXNativeTarget;\n"
+            f"\t\t\tbuildConfigurationList = {ext_config_list};\n"
+            "\t\t\tbuildPhases = (\n"
+            f"\t\t\t\t{ext_sources_phase} /* Sources */,\n"
+            f"\t\t\t\t{ext_frameworks_phase} /* Frameworks */,\n"
+            f"\t\t\t\t{ext_resources_phase} /* Resources */,\n"
+            "\t\t\t);\n"
+            "\t\t\tbuildRules = (\n\t\t\t);\n"
+            "\t\t\tdependencies = (\n\t\t\t);\n"
+            f"\t\t\tname = {EXTENSION_NAME};\n"
+            f"\t\t\tproductName = {EXTENSION_NAME};\n"
+            f"\t\t\tproductReference = {ext_product_ref} /* {EXTENSION_NAME}.appex */;\n"
+            '\t\t\tproductType = "com.apple.product-type.app-extension";\n'
+            "\t\t};\n"
+            if ext_sources else ""
+        )
+        + "/* End PBXNativeTarget section */"
     )
+
+    # 앱이 익스텐션보다 먼저 빌드되면 복사할 appex 가 없다. 순서를 못 박는다.
+    if ext_sources:
+        objects.append(
+            "/* Begin PBXContainerItemProxy section */\n"
+            f"\t\t{proxy_id} /* PBXContainerItemProxy */ = {{\n"
+            "\t\t\tisa = PBXContainerItemProxy;\n"
+            f"\t\t\tcontainerPortal = {project_id} /* Project object */;\n"
+            "\t\t\tproxyType = 1;\n"
+            f"\t\t\tremoteGlobalIDString = {ext_target_id};\n"
+            f"\t\t\tremoteInfo = {EXTENSION_NAME};\n"
+            "\t\t};\n"
+            "/* End PBXContainerItemProxy section */"
+        )
+        objects.append(
+            "/* Begin PBXTargetDependency section */\n"
+            f"\t\t{dependency_id} /* PBXTargetDependency */ = {{\n"
+            "\t\t\tisa = PBXTargetDependency;\n"
+            f"\t\t\ttarget = {ext_target_id} /* {EXTENSION_NAME} */;\n"
+            f"\t\t\ttargetProxy = {proxy_id} /* PBXContainerItemProxy */;\n"
+            "\t\t};\n"
+            "/* End PBXTargetDependency section */"
+        )
 
     objects.append(
         "/* Begin PBXProject section */\n"
@@ -311,7 +481,13 @@ def build() -> str:
         f"\t\t\t\t\t{target_id} = {{\n"
         "\t\t\t\t\t\tCreatedOnToolsVersion = 15.0;\n"
         "\t\t\t\t\t};\n"
-        "\t\t\t\t};\n"
+        + (
+            f"\t\t\t\t\t{ext_target_id} = {{\n"
+            "\t\t\t\t\t\tCreatedOnToolsVersion = 15.0;\n"
+            "\t\t\t\t\t};\n"
+            if ext_sources else ""
+        )
+        + "\t\t\t\t};\n"
         "\t\t\t};\n"
         f"\t\t\tbuildConfigurationList = {project_config_list};\n"
         f'\t\t\tcompatibilityVersion = "{COMPATIBILITY_VERSION}";\n'
@@ -324,37 +500,49 @@ def build() -> str:
         '\t\t\tprojectRoot = "";\n'
         "\t\t\ttargets = (\n"
         f"\t\t\t\t{target_id} /* {PROJECT_NAME} */,\n"
-        "\t\t\t);\n"
+        + (f"\t\t\t\t{ext_target_id} /* {EXTENSION_NAME} */,\n" if ext_sources else "")
+        + "\t\t\t);\n"
         "\t\t};\n"
         "/* End PBXProject section */"
     )
 
-    objects.append(
-        "/* Begin PBXResourcesBuildPhase section */\n"
+    section = ["/* Begin PBXResourcesBuildPhase section */"]
+    section.append(
         f"\t\t{resources_phase} /* Resources */ = {{\n"
         "\t\t\tisa = PBXResourcesBuildPhase;\n"
         "\t\t\tbuildActionMask = 2147483647;\n"
-        "\t\t\tfiles = (\n\t\t\t);\n"
-        "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
-        "\t\t};\n"
-        "/* End PBXResourcesBuildPhase section */"
-    )
-
-    objects.append(
-        "/* Begin PBXSourcesBuildPhase section */\n"
-        f"\t\t{sources_phase} /* Sources */ = {{\n"
-        "\t\t\tisa = PBXSourcesBuildPhase;\n"
-        "\t\t\tbuildActionMask = 2147483647;\n"
         "\t\t\tfiles = (\n"
-        + "".join(
-            f"\t\t\t\t{build_id} /* {name} in Sources */,\n"
-            for build_id, _, name in sorted(build_files, key=lambda item: item[2])
-        )
-        + "\t\t\t);\n"
+        f"\t\t\t\t{assets_build} /* Assets.xcassets in Resources */,\n"
+        "\t\t\t);\n"
         "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
-        "\t\t};\n"
-        "/* End PBXSourcesBuildPhase section */"
+        "\t\t};"
     )
+    if ext_sources:
+        section.append(empty_phase(ext_resources_phase, "PBXResourcesBuildPhase", "Resources"))
+    section.append("/* End PBXResourcesBuildPhase section */")
+    objects.append("\n".join(section))
+
+    def sources_phase_block(phase_id: str, files: list[tuple[str, str, str]]) -> str:
+        return (
+            f"\t\t{phase_id} /* Sources */ = {{\n"
+            "\t\t\tisa = PBXSourcesBuildPhase;\n"
+            "\t\t\tbuildActionMask = 2147483647;\n"
+            "\t\t\tfiles = (\n"
+            + "".join(
+                f"\t\t\t\t{build_id} /* {name} in Sources */,\n"
+                for build_id, _, name in sorted(files, key=lambda item: item[2])
+            )
+            + "\t\t\t);\n"
+            "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
+            "\t\t};"
+        )
+
+    section = ["/* Begin PBXSourcesBuildPhase section */"]
+    section.append(sources_phase_block(sources_phase, build_files))
+    if ext_sources:
+        section.append(sources_phase_block(ext_sources_phase, ext_build_files))
+    section.append("/* End PBXSourcesBuildPhase section */")
+    objects.append("\n".join(section))
 
     # 빌드 설정. Config/Base.xcconfig 를 베이스로 깔아 두면
     # 팀 ID / 번들 ID 를 프로젝트 파일을 건드리지 않고 Local.xcconfig 로 덮어쓸 수 있다.
@@ -364,6 +552,11 @@ def build() -> str:
         (oid("config:target:Debug"), "Debug", TARGET_COMMON, False),
         (oid("config:target:Release"), "Release", TARGET_COMMON, False),
     ]
+    if ext_sources:
+        configs += [
+            (oid("config:ext:Debug"), "Debug", EXTENSION_TARGET, False),
+            (oid("config:ext:Release"), "Release", EXTENSION_TARGET, False),
+        ]
 
     section = ["/* Begin XCBuildConfiguration section */"]
     for config_id, name, settings, is_project in configs:
@@ -386,12 +579,19 @@ def build() -> str:
     objects.append("\n".join(section))
 
     section = ["/* Begin XCConfigurationList section */"]
-    for list_id, label, debug_id, release_id in (
+    config_lists = [
         (project_config_list, f"PBXProject \"{PROJECT_NAME}\"",
          oid("config:project:Debug"), oid("config:project:Release")),
         (target_config_list, f"PBXNativeTarget \"{PROJECT_NAME}\"",
          oid("config:target:Debug"), oid("config:target:Release")),
-    ):
+    ]
+    if ext_sources:
+        config_lists.append(
+            (ext_config_list, f"PBXNativeTarget \"{EXTENSION_NAME}\"",
+             oid("config:ext:Debug"), oid("config:ext:Release"))
+        )
+
+    for list_id, label, debug_id, release_id in config_lists:
         section.append(
             f"\t\t{list_id} /* Build configuration list for {label} */ = {{\n"
             "\t\t\tisa = XCConfigurationList;\n"

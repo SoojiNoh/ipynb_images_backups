@@ -20,6 +20,8 @@
 		496A846C66F264CC35287F24 /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F7B0FEA578E40B23335BCD /* HTTPServer.swift */; };
 		5236520ADE09ADCC43D0E5B2 /* HTTPTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673AE85F5F2737EAF1C2453F /* HTTPTypes.swift */; };
 		284F9C1E8A993BD2FA4DCF40 /* ImageEncoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61B9CD65269874357AFE90B2 /* ImageEncoding.swift */; };
+		505D2F92E8F910354F55AC8F /* InboxProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E4B24672E2FDF6D7D7A096D /* InboxProvider.swift */; };
+		13D8E9D1A950D57F51C1191C /* InboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01192CD30103975C647EF1FE /* InboxStore.swift */; };
 		01E6552D7DF436384784912D /* JSONUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2CBA92721453B790FDBDB9 /* JSONUtil.swift */; };
 		8832C893D05DE2BF6C3B8C42 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 212B40651D227142063368EC /* Keychain.swift */; };
 		BF7055363C4E98ECA32D5266 /* MCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D569F629078F392F8AEBC096 /* MCPServer.swift */; };
@@ -29,13 +31,19 @@
 		1BA164427D903219D7213E02 /* PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF6FC94BCD14667764972890 /* PhotoLibraryService.swift */; };
 		C4F3FB2702E1390A5FF3CE5D /* PhotosProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38001B5DE72772D64807CAFB /* PhotosProvider.swift */; };
 		B62374D0D3AFB87B6B28870D /* RuntimeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7526154EA34FCFB05D4DAD9 /* RuntimeConfig.swift */; };
+		90ACE73ECB320CD4AA0E4B9A /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0F13CC5B045B26FF88FBE6F /* ShareViewController.swift */; };
 		24D255C9CE5ECDA9AA84E553 /* SystemProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 712E2C2483418E15C237CDA6 /* SystemProviders.swift */; };
+		999FF37E9C5A0FFB78E1CDE2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DECB254F9F6046E214AE8A06 /* Assets.xcassets */; };
+		F78DD93DA18C179C907BEB2F /* AssetBridgeShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FF4BCC6CC3CACB55CB01215C /* AssetBridgeShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		F82CA38F99180137D215F6D4 /* AssetBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AssetBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3E8B5F5C6FE25A18F1B0A220 /* AssetBridge-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "AssetBridge-Info.plist"; sourceTree = "<group>"; };
 		096BC76502FFC8D6D4BEBFDD /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		DECB254F9F6046E214AE8A06 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FF4BCC6CC3CACB55CB01215C /* AssetBridgeShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AssetBridgeShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1D062D4D02D8CA0AE3EAB35 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		086B64DC9A775545F9B9A7E5 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		8FA0B1573E8BAAEFAA77572A /* AssetBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetBridgeApp.swift; sourceTree = "<group>"; };
 		5D4BD186985C5DA7C6F027E7 /* AudioKeepAlive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioKeepAlive.swift; sourceTree = "<group>"; };
@@ -49,6 +57,8 @@
 		A3F7B0FEA578E40B23335BCD /* HTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPServer.swift; sourceTree = "<group>"; };
 		673AE85F5F2737EAF1C2453F /* HTTPTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPTypes.swift; sourceTree = "<group>"; };
 		61B9CD65269874357AFE90B2 /* ImageEncoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageEncoding.swift; sourceTree = "<group>"; };
+		4E4B24672E2FDF6D7D7A096D /* InboxProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxProvider.swift; sourceTree = "<group>"; };
+		01192CD30103975C647EF1FE /* InboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxStore.swift; sourceTree = "<group>"; };
 		3E2CBA92721453B790FDBDB9 /* JSONUtil.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONUtil.swift; sourceTree = "<group>"; };
 		212B40651D227142063368EC /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		D569F629078F392F8AEBC096 /* MCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServer.swift; sourceTree = "<group>"; };
@@ -58,6 +68,7 @@
 		EF6FC94BCD14667764972890 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
 		38001B5DE72772D64807CAFB /* PhotosProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotosProvider.swift; sourceTree = "<group>"; };
 		E7526154EA34FCFB05D4DAD9 /* RuntimeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfig.swift; sourceTree = "<group>"; };
+		E0F13CC5B045B26FF88FBE6F /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		712E2C2483418E15C237CDA6 /* SystemProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProviders.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -69,14 +80,37 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3EB3E7C5CC2EF3FB177F0F97 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8336626A588BFF7E48225BCB /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F78DD93DA18C179C907BEB2F /* AssetBridgeShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXGroup section */
 		CC5D242D023A9271190EA7C6 = {
 			isa = PBXGroup;
 			children = (
 				647F22983932505F8226C46F /* Sources */,
+				CEEB415F2DC399E2FD192212 /* ShareExtension */,
 				1B3039B2E15DD2AB7EA6156D /* Config */,
+				DECB254F9F6046E214AE8A06 /* Assets.xcassets */,
 				3E8B5F5C6FE25A18F1B0A220 /* AssetBridge-Info.plist */,
 				AE7805B56D1DCAFAA071416F /* Products */,
 			);
@@ -130,6 +164,7 @@
 				63B5498127D3DC68F48247AC /* CalendarProvider.swift */,
 				F7166205DE430FE3B7C9E77B /* ContactsProvider.swift */,
 				16CE1DF46CF5D752C930AF0F /* FilesProvider.swift */,
+				4E4B24672E2FDF6D7D7A096D /* InboxProvider.swift */,
 				59923D8A33BEF7C7CD9C552C /* MusicProvider.swift */,
 				38001B5DE72772D64807CAFB /* PhotosProvider.swift */,
 				712E2C2483418E15C237CDA6 /* SystemProviders.swift */,
@@ -152,12 +187,22 @@
 			children = (
 				9F3D5211C707AF6055BA0F31 /* DateParse.swift */,
 				F08C029762E219D56DE880B1 /* ExportStore.swift */,
+				01192CD30103975C647EF1FE /* InboxStore.swift */,
 				3E2CBA92721453B790FDBDB9 /* JSONUtil.swift */,
 				212B40651D227142063368EC /* Keychain.swift */,
 				ECA769E42B445ED4799166D6 /* NetworkInfo.swift */,
 				E7526154EA34FCFB05D4DAD9 /* RuntimeConfig.swift */,
 			);
 			path = Support;
+			sourceTree = "<group>";
+		};
+		CEEB415F2DC399E2FD192212 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				E0F13CC5B045B26FF88FBE6F /* ShareViewController.swift */,
+				F1D062D4D02D8CA0AE3EAB35 /* Info.plist */,
+			);
+			path = ShareExtension;
 			sourceTree = "<group>";
 		};
 		1B3039B2E15DD2AB7EA6156D /* Config */ = {
@@ -172,6 +217,7 @@
 			isa = PBXGroup;
 			children = (
 				F82CA38F99180137D215F6D4 /* AssetBridge.app */,
+				FF4BCC6CC3CACB55CB01215C /* AssetBridgeShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -186,17 +232,54 @@
 				9261F04E014268C1FB6C1C5E /* Sources */,
 				0B0EAC1C67A2F2EB9E6EB6F7 /* Frameworks */,
 				B04831CC372489EBF0287850 /* Resources */,
+				8336626A588BFF7E48225BCB /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B20EEEDF2E8C45D2CC0935EB /* PBXTargetDependency */,
 			);
 			name = AssetBridge;
 			productName = AssetBridge;
 			productReference = F82CA38F99180137D215F6D4 /* AssetBridge.app */;
 			productType = "com.apple.product-type.application";
 		};
+		82F876CF2687B22D6A4DB42E /* AssetBridgeShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 157B5DFCB994D637E6F8628C;
+			buildPhases = (
+				77CC47C3EC4529B6A976E0FC /* Sources */,
+				3EB3E7C5CC2EF3FB177F0F97 /* Frameworks */,
+				38D66898B967A613368A114C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AssetBridgeShare;
+			productName = AssetBridgeShare;
+			productReference = FF4BCC6CC3CACB55CB01215C /* AssetBridgeShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		C158E9D2124632786092A592 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DE57CBD6DF21BD0D904B24DC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 82F876CF2687B22D6A4DB42E;
+			remoteInfo = AssetBridgeShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		B20EEEDF2E8C45D2CC0935EB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 82F876CF2687B22D6A4DB42E /* AssetBridgeShare */;
+			targetProxy = C158E9D2124632786092A592 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		DE57CBD6DF21BD0D904B24DC /* Project object */ = {
@@ -207,6 +290,9 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					8C1A045E96B998B40533C7FF = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					82F876CF2687B22D6A4DB42E = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -225,12 +311,21 @@
 			projectRoot = "";
 			targets = (
 				8C1A045E96B998B40533C7FF /* AssetBridge */,
+				82F876CF2687B22D6A4DB42E /* AssetBridgeShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B04831CC372489EBF0287850 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				999FF37E9C5A0FFB78E1CDE2 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		38D66898B967A613368A114C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -257,6 +352,8 @@
 				496A846C66F264CC35287F24 /* HTTPServer.swift in Sources */,
 				5236520ADE09ADCC43D0E5B2 /* HTTPTypes.swift in Sources */,
 				284F9C1E8A993BD2FA4DCF40 /* ImageEncoding.swift in Sources */,
+				505D2F92E8F910354F55AC8F /* InboxProvider.swift in Sources */,
+				13D8E9D1A950D57F51C1191C /* InboxStore.swift in Sources */,
 				01E6552D7DF436384784912D /* JSONUtil.swift in Sources */,
 				8832C893D05DE2BF6C3B8C42 /* Keychain.swift in Sources */,
 				BF7055363C4E98ECA32D5266 /* MCPServer.swift in Sources */,
@@ -267,6 +364,14 @@
 				C4F3FB2702E1390A5FF3CE5D /* PhotosProvider.swift in Sources */,
 				B62374D0D3AFB87B6B28870D /* RuntimeConfig.swift in Sources */,
 				24D255C9CE5ECDA9AA84E553 /* SystemProviders.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CC47C3EC4529B6A976E0FC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				90ACE73ECB320CD4AA0E4B9A /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -344,6 +449,7 @@
 		D33AAFE35EDBC07AD2F20989 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -364,6 +470,7 @@
 		A4F6FDF00412DAC7A3965672 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -375,6 +482,50 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		826515D5DF8CF3B528697040 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(ASSETBRIDGE_BUNDLE_ID).share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7019FC83D0DD58F9BBCB2854 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(ASSETBRIDGE_BUNDLE_ID).share";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -398,6 +549,15 @@
 			buildConfigurations = (
 				D33AAFE35EDBC07AD2F20989 /* Debug */,
 				A4F6FDF00412DAC7A3965672 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		157B5DFCB994D637E6F8628C /* Build configuration list for PBXNativeTarget "AssetBridgeShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				826515D5DF8CF3B528697040 /* Debug */,
+				7019FC83D0DD58F9BBCB2854 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

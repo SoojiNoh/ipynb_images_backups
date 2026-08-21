@@ -16,6 +16,7 @@ final class RuntimeConfig {
         static let enabledDomains = "server.enabledDomains"
         static let keepAwake = "server.keepAwake"
         static let backgroundAudio = "server.backgroundAudio"
+        static let acceptShares = "server.acceptShares"
         static let autoStart = "server.autoStart"
     }
 
@@ -26,6 +27,7 @@ final class RuntimeConfig {
     private var _enabledDomains: Set<String>
     private var _keepAwake: Bool
     private var _backgroundAudio: Bool
+    private var _acceptShares: Bool
     private var _autoStart: Bool
 
     private init() {
@@ -46,6 +48,7 @@ final class RuntimeConfig {
             // 앱을 띄워 둬야만 도는 서버는 쓸모가 반이다. 기본으로 켠다.
             // 무음이고 mixWithOthers 라 듣던 음악을 끊지 않는다. 끄고 싶으면 설정에서.
             Key.backgroundAudio: true,
+            Key.acceptShares: true,
             Key.autoStart: true
         ])
 
@@ -54,6 +57,7 @@ final class RuntimeConfig {
         _allowWrites = defaults.bool(forKey: Key.allowWrites)
         _keepAwake = defaults.bool(forKey: Key.keepAwake)
         _backgroundAudio = defaults.bool(forKey: Key.backgroundAudio)
+        _acceptShares = defaults.bool(forKey: Key.acceptShares)
         _autoStart = defaults.bool(forKey: Key.autoStart)
 
         if let saved = defaults.stringArray(forKey: Key.enabledDomains) {
@@ -112,6 +116,15 @@ final class RuntimeConfig {
         }
     }
 
+    /// 공유 익스텐션이 보내는 항목을 받을지. 루프백에서만 열리는 경로다.
+    var acceptShares: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _acceptShares }
+        set {
+            lock.lock(); _acceptShares = newValue; lock.unlock()
+            defaults.set(newValue, forKey: Key.acceptShares)
+        }
+    }
+
     var backgroundAudio: Bool {
         get { lock.lock(); defer { lock.unlock() }; return _backgroundAudio }
         set {
@@ -161,6 +174,7 @@ enum ToolDomain: String, CaseIterable, Identifiable {
     case clipboard
     case music
     case files
+    case inbox
 
     var id: String { rawValue }
 
@@ -176,6 +190,7 @@ enum ToolDomain: String, CaseIterable, Identifiable {
         case .clipboard: return "클립보드"
         case .music: return "음악 보관함"
         case .files: return "파일"
+        case .inbox: return "공유 받은 항목"
         }
     }
 
@@ -191,6 +206,7 @@ enum ToolDomain: String, CaseIterable, Identifiable {
         case .clipboard: return "doc.on.clipboard"
         case .music: return "music.note"
         case .files: return "folder"
+        case .inbox: return "tray.and.arrow.down"
         }
     }
 }

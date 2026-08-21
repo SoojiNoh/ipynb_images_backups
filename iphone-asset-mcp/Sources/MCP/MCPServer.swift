@@ -135,6 +135,19 @@ final class MCPServer {
             ]
             return .json(health)
 
+        case ("POST", "/share"):
+            // 공유 익스텐션 전용 입구. 토큰을 요구하지 않는다 — 요구할 수가 없다.
+            // 무료 계정은 App Group 도 키체인 공유도 못 쓰므로 익스텐션이 토큰을
+            // 알 방법이 없다. 대신 같은 기기(루프백)에서만 연다.
+            //
+            // 이 경로로 할 수 있는 일은 항목을 받은함에 **넣는 것**뿐이다.
+            // 읽어 가는 문은 하나도 열려 있지 않으므로, 최악의 경우도 같은 폰에
+            // 깔린 다른 앱이 쓰레기를 밀어 넣는 정도다.
+            guard let peer, NetworkInfo.isLoopback(peer) else {
+                return .error("공유 수신은 같은 기기에서만 됩니다.", status: 403)
+            }
+            return receiveShare(request)
+
         case ("POST", "/mcp"):
             guard authorize(request, peer: peer) else { return unauthorized(peer) }
             return await handleRPC(request)
@@ -155,6 +168,37 @@ final class MCPServer {
             }
             return .error("Not found", status: 404)
         }
+    }
+
+    // MARK: - 공유 수신
+
+    private func receiveShare(_ request: HTTPRequest) -> HTTPResponse {
+        guard config.acceptShares else {
+            return .error("공유 수신이 꺼져 있습니다.", status: 403)
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any] else {
+            return .error("Invalid JSON", status: 400)
+        }
+
+        let kind = object.string("kind") ?? "text"
+        let text = object.string("text")
+        let name = object.string("name")
+        let mimeType = object.string("mimeType")
+        let data = object.string("data").flatMap { Data(base64Encoded: $0) }
+
+        guard text != nil || data != nil else {
+            return .error("내용이 비어 있습니다.", status: 400)
+        }
+        guard let id = InboxStore.shared.add(kind: kind,
+                                             text: text,
+                                             name: name,
+                                             mimeType: mimeType,
+                                             data: data) else {
+            return .error("저장하지 못했습니다.", status: 500)
+        }
+
+        onEvent?(.info, "공유 받음 — \(kind)\(name.map { " (\($0))" } ?? "")")
+        return .json(["ok": true, "id": id])
     }
 
     // MARK: - Auth

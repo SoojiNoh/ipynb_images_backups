@@ -46,6 +46,7 @@ final class AppState: ObservableObject {
     @Published var keepAwake: Bool { didSet { config.keepAwake = keepAwake; applyIdleTimer() } }
     @Published var backgroundAudio: Bool { didSet { config.backgroundAudio = backgroundAudio; applyBackgroundAudio() } }
     @Published var autoStart: Bool { didSet { config.autoStart = autoStart } }
+    @Published var acceptShares: Bool { didSet { config.acceptShares = acceptShares } }
     @Published var enabledDomains: Set<String> {
         didSet {
             for domain in ToolDomain.allCases {
@@ -79,7 +80,7 @@ final class AppState: ObservableObject {
             photos, contacts,
             CalendarProvider(), RemindersProvider(),
             location, DeviceProvider(), motion, ClipboardProvider(),
-            music, FilesProvider()
+            music, FilesProvider(), InboxProvider()
         ])
 
         port = configuration.port
@@ -88,6 +89,7 @@ final class AppState: ObservableObject {
         keepAwake = configuration.keepAwake
         backgroundAudio = configuration.backgroundAudio
         autoStart = configuration.autoStart
+        acceptShares = configuration.acceptShares
         enabledDomains = configuration.enabledDomains
 
         wireServer()
