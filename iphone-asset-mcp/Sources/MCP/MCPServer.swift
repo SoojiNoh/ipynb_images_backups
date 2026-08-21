@@ -199,13 +199,19 @@ final class MCPServer {
             onEvent?(.warn, "공유 거절 — 내용이 비어 있음 (kind=\(kind))")
             return .error("내용이 비어 있습니다.", status: 400)
         }
-        guard let id = InboxStore.shared.add(kind: kind,
-                                             text: text,
-                                             name: name,
-                                             mimeType: mimeType,
-                                             data: data) else {
-            onEvent?(.error, "공유 저장 실패 — 디스크에 쓰지 못했습니다")
-            return .error("저장하지 못했습니다.", status: 500)
+        let id: String
+        do {
+            id = try InboxStore.shared.add(kind: kind,
+                                           text: text,
+                                           name: name,
+                                           mimeType: mimeType,
+                                           data: data)
+        } catch {
+            // 무엇이 왜 안 됐는지 그대로 올려 보낸다. 익스텐션 화면과 활동 로그
+            // 양쪽에 남으므로, 다음번엔 추측할 것이 없다.
+            let reason = error.localizedDescription
+            onEvent?(.error, "공유 저장 실패 — \(reason)")
+            return .error("저장하지 못했습니다: \(reason)", status: 500)
         }
 
         onEvent?(.info, "공유 받음 — \(kind)\(name.map { " (\($0))" } ?? "") from \(peer ?? "주소 불명")")

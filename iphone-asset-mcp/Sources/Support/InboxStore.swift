@@ -16,31 +16,43 @@ final class InboxStore {
 
     private init() {}
 
-    private var directory: URL? {
-        guard let documents = try? FileManager.default.url(for: .documentDirectory,
-                                                           in: .userDomainMask,
-                                                           appropriateFor: nil,
-                                                           create: true) else { return nil }
-        let inbox = documents.appendingPathComponent("Inbox", isDirectory: true)
+    /// Documents/Inbox 는 쓰면 안 된다.
+    ///
+    /// iOS 가 다른 앱에서 열어 온 문서를 놓아 두는 예약 폴더이고, 앱은 그 안의
+    /// 파일을 읽고 지울 수만 있다. 거기에 쓰려다 실패한 것이 HTTP 500 의 정체였다.
+    /// Application Support 아래 우리 이름의 폴더를 쓴다 — 사용자에게 보이지도 않고,
+    /// 시스템과 이름이 겹치지도 않는다.
+    private func inboxDirectory() throws -> URL {
+        let support = try FileManager.default.url(for: .applicationSupportDirectory,
+                                                  in: .userDomainMask,
+                                                  appropriateFor: nil,
+                                                  create: true)
+        let inbox = support.appendingPathComponent("SharedInbox", isDirectory: true)
         if !FileManager.default.fileExists(atPath: inbox.path) {
-            try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
         }
         return inbox
     }
 
+    /// 읽기 경로용. 여기서는 실패해도 빈 목록이면 충분하다.
+    private var directoryIfAvailable: URL? { try? inboxDirectory() }
+
     // MARK: - 쓰기
 
-    /// 항목 하나를 저장하고 id 를 돌려준다. 실패하면 nil.
+    /// 항목 하나를 저장하고 id 를 돌려준다.
+    ///
+    /// 실패를 nil 로 뭉개지 않고 던진다. 호출부가 500 만 내보내면 무엇이 잘못됐는지
+    /// 아무 데도 남지 않는다 — 실제로 그래서 한 번 헤맸다.
     @discardableResult
     func add(kind: String,
              text: String?,
              name: String?,
              mimeType: String?,
-             data: Data?) -> String? {
+             data: Data?) throws -> String {
         lock.lock()
         defer { lock.unlock() }
 
-        guard let directory else { return nil }
+        let directory = try inboxDirectory()
 
         // 시간 + 난수. 같은 밀리초에 여러 장이 들어와도 부딪히지 않는다.
         let id = String(format: "%.0f-%04x", Date().timeIntervalSince1970 * 1000,
@@ -57,14 +69,12 @@ final class InboxStore {
 
         if let data, !data.isEmpty {
             let binary = directory.appendingPathComponent("\(id).bin")
-            guard (try? data.write(to: binary, options: .atomic)) != nil else { return nil }
+            try data.write(to: binary, options: .atomic)
             meta["bytes"] = data.count
         }
 
         let json = directory.appendingPathComponent("\(id).json")
-        guard (try? JSONUtil.data(meta, pretty: true).write(to: json, options: .atomic)) != nil else {
-            return nil
-        }
+        try JSONUtil.data(meta, pretty: true).write(to: json, options: .atomic)
         return id
     }
 
@@ -90,14 +100,14 @@ final class InboxStore {
     func metadata(id: String) -> [String: Any]? {
         lock.lock()
         defer { lock.unlock() }
-        guard let directory else { return nil }
+        guard let directory = directoryIfAvailable else { return nil }
         return readMeta(directory.appendingPathComponent("\(id).json"))
     }
 
     func payload(id: String) -> Data? {
         lock.lock()
         defer { lock.unlock() }
-        guard let directory else { return nil }
+        guard let directory = directoryIfAvailable else { return nil }
         return try? Data(contentsOf: directory.appendingPathComponent("\(id).bin"))
     }
 
@@ -114,7 +124,7 @@ final class InboxStore {
     func remove(id: String? = nil) -> Int {
         lock.lock()
         defer { lock.unlock() }
-        guard let directory else { return 0 }
+        guard let directory = directoryIfAvailable else { return 0 }
 
         let manager = FileManager.default
         var removed = 0
@@ -144,7 +154,7 @@ final class InboxStore {
 
     /// 최근 것이 앞에 오도록 정렬해 전부 읽는다. 잠금은 호출부가 잡는다.
     private func loadAll() -> [[String: Any]] {
-        guard let directory,
+        guard let directory = directoryIfAvailable,
               let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path)
         else { return [] }
 
